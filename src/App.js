@@ -42,17 +42,18 @@ const App = () => {
     useEffect(() => {
         const initializeDailyState = async (currentSession) => {
             setLoading(true);
-            const today = new Date();
-            const todayStr = today.toISOString().slice(0, 10);
-            const dailySeed = parseInt(todayStr.replace(/-/g, ''), 10);
+            
+            // THIS IS THE FIX: We use UTC methods to get a universal date.
+            const now = new Date();
+            const year = now.getUTCFullYear();
+            const month = (now.getUTCMonth() + 1).toString().padStart(2, '0'); // padStart ensures "07" instead of "7"
+            const day = now.getUTCDate().toString().padStart(2, '0');
+            const utcDateStr = `${year}-${month}-${day}`;
+            const dailySeed = parseInt(`${year}${month}${day}`, 10);
             
             let completedPlay = null;
 
             if (currentSession?.user) {
-                // THIS IS THE FIX: We use .limit(1).maybeSingle()
-                // This tells Supabase to "find all matching rows, give me the first one, 
-                // and it's okay if you find zero rows (return null) or more than one (just give me the first)."
-                // This prevents the 406 error.
                 const { data, error } = await supabase
                     .from('plays')
                     .select('*')
@@ -68,7 +69,8 @@ const App = () => {
                 }
 
             } else {
-                const guestPlay = localStorage.getItem(`glyph-play-${todayStr}`);
+                // Use the UTC date string for the localStorage key to keep it consistent.
+                const guestPlay = localStorage.getItem(`glyph-play-${utcDateStr}`);
                 if (guestPlay) {
                     completedPlay = JSON.parse(guestPlay);
                 }
@@ -78,13 +80,22 @@ const App = () => {
 
             if (completedPlay) {
                 const history = completedPlay.guess_history || [];
+                
+                let finalGuessesLeft = 0;
+                if (completedPlay.is_win) {
+                    const wrongGuesses = history.length - 1;
+                    finalGuessesLeft = 3 - wrongGuesses;
+                } else {
+                    finalGuessesLeft = 0;
+                }
+
                 setGameState({
                     puzzle: dailyPuzzle,
                     isComplete: true,
                     isWin: completedPlay.is_win,
                     guessHistory: history,
                     elapsedTime: Math.floor(completedPlay.duration_ms / 1000),
-                    guessesLeft: 3 - history.length,
+                    guessesLeft: finalGuessesLeft,
                     isTimerRunning: false,
                 });
             } else {
@@ -107,7 +118,7 @@ const App = () => {
         });
 
         return () => subscription.unsubscribe();
-    }, []); // <-- Empty dependency array ensures this runs only once.
+    }, []);
 
     useEffect(() => {
         let interval;
