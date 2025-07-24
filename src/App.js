@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from './lib/supabaseClient';
 import { generatePuzzle } from './lib/puzzleGenerator';
 import WelcomeScreen from './components/WelcomeScreen';
-import Game from './components/Game';
 import SettingsModal from './components/SettingsModal';
+import Game from './components/Game';
 import Footer from './components/Footer';
 import './App.css';
 
@@ -16,7 +16,7 @@ const App = () => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
     
-    // daily game state is now managed here to preserve it across mode switches
+    // holds the state for the daily puzzle
     const [dailyState, setDailyState] = useState({
         puzzle: null,
         elapsedTime: 0,
@@ -46,30 +46,24 @@ const App = () => {
         const setAuthAndLoadGame = async (currentSession) => {
             const today = new Date().toISOString().slice(0, 10);
             const dailySeed = parseInt(today.replace(/-/g, ''));
-            const dailyPuzzle = generatePuzzle(dailySeed);
-
+            
             let completedPlay = null;
-            const userId = currentSession?.user?.id;
 
-            if (userId) {
-                // check if the signed-in user has already played today
+            // first check for a completed play either in the db or local storage
+            if (currentSession) {
                 const { data: existingPlay } = await supabase
                     .from('plays')
                     .select('*')
-                    .eq('user_id', userId)
+                    .eq('user_id', currentSession.user.id)
                     .eq('puzzle_id', dailySeed)
                     .single();
-                if (existingPlay) {
-                    completedPlay = existingPlay;
-                }
+                if (existingPlay) completedPlay = existingPlay;
             } else {
                 const guestPlay = localStorage.getItem(`glyph-play-${today}`);
-                if (guestPlay) {
-                    completedPlay = JSON.parse(guestPlay);
-                }
+                if (guestPlay) completedPlay = JSON.parse(guestPlay);
             }
             
-            // set user state before setting daily state
+            // now that we have play data we can set the user state
             setSession(currentSession);
             if (currentSession) {
                 setUserState('authenticated');
@@ -77,6 +71,8 @@ const App = () => {
                 setUserState(completedPlay ? 'guest' : 'guest_prompt');
             }
 
+            // finally build the daily state based on whether a completed game was found
+            const dailyPuzzle = generatePuzzle(dailySeed);
             if (completedPlay) {
                 const history = completedPlay.guess_history || [];
                 setDailyState({
@@ -89,6 +85,8 @@ const App = () => {
                     isTimerRunning: false,
                 });
             } else {
+                // handle in-progress games for both guests and signed-in users
+                const userId = currentSession?.user.id;
                 const inProgressKey = userId ? `glyph-in-progress-${userId}-${today}` : `glyph-in-progress-${today}`;
                 const inProgressPlay = JSON.parse(localStorage.getItem(inProgressKey));
 
@@ -108,10 +106,12 @@ const App = () => {
             }
         };
 
+        // initial session check
         supabase.auth.getSession().then(({ data: { session } }) => {
             setAuthAndLoadGame(session);
         });
 
+        // listen for auth changes (sign in/out)
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setAuthAndLoadGame(session);
         });
@@ -123,12 +123,13 @@ const App = () => {
     useEffect(() => {
         let interval;
         const today = new Date().toISOString().slice(0, 10);
-        const userId = session?.user?.id;
+        const userId = session?.user.id;
 
         if (mode === 'daily' && dailyState.isTimerRunning && !dailyState.isComplete) {
             interval = setInterval(() => {
                 setDailyState(s => {
                     const newState = { ...s, elapsedTime: s.elapsedTime + 1 };
+                    // save in-progress state to local storage
                     const inProgressKey = userId ? `glyph-in-progress-${userId}-${today}` : `glyph-in-progress-${today}`;
                     localStorage.setItem(inProgressKey, JSON.stringify(newState));
                     return newState;
@@ -136,7 +137,7 @@ const App = () => {
             }, 1000);
         }
         return () => clearInterval(interval);
-    }, [mode, dailyState.isTimerRunning, dailyState.isComplete, session, userState]);
+    }, [mode, dailyState.isTimerRunning, dailyState.isComplete, session]);
     
     // signs the user out
     const handleSignOut = async () => {
@@ -208,25 +209,14 @@ const App = () => {
         max: maxPracticeDifficulty
     }), [minPracticeDifficulty, maxPracticeDifficulty]);
 
-    // pauses or resumes the daily timer when switching modes
-    const handleModeChange = (newMode) => {
-        if (mode === 'daily' && newMode === 'practice') {
-            setDailyState(s => ({ ...s, isTimerRunning: false }));
-        }
-        if (mode === 'practice' && newMode === 'daily' && !dailyState.isComplete) {
-            setDailyState(s => ({ ...s, isTimerRunning: true }));
-        }
-        setMode(newMode);
-    };
-
     return (
         <div className="app-container">
             <header className="app-header">
                 <h1 className="app-title">Play-Glyph</h1>
                 <div className="controls-container">
                     <div className="mode-switcher">
-                        <button className={`mode-button ${mode === 'daily' ? 'active' : ''}`} onClick={() => handleModeChange('daily')}>Daily</button>
-                        <button className={`mode-button ${mode === 'practice' ? 'active' : ''}`} onClick={() => { handleModeChange('practice'); handleNewPracticeGame(); }}>Practice</button>
+                        <button className={`mode-button ${mode === 'daily' ? 'active' : ''}`} onClick={() => setMode('daily')}>Daily</button>
+                        <button className={`mode-button ${mode === 'practice' ? 'active' : ''}`} onClick={() => { setMode('practice'); handleNewPracticeGame(); }}>Practice</button>
                     </div>
                     {userState !== 'authenticated' && (
                         <button onClick={handleSignIn} className="auth-button google-signin-button">
@@ -243,26 +233,16 @@ const App = () => {
                 {userState === 'loading' && <div>Loading...</div>}
                 {userState === 'guest_prompt' && <WelcomeScreen onGuestLogin={() => setUserState('guest')} />}
                 {(userState === 'guest' || userState === 'authenticated') && (
-                     <>
-                        {mode === 'daily' ? (
-                             <Game 
-                                key={'daily'} 
-                                user={session?.user} 
-                                isPractice={false} 
-                                dailyState={dailyState}
-                                setDailyState={setDailyState}
-                            />
-                        ) : (
-                             <Game 
-                                key={`practice-${practiceGameTrigger}`}
-                                user={session?.user} 
-                                isPractice={true} 
-                                onPlayAgain={handleNewPracticeGame}
-                                practiceDifficultyRange={practiceDifficultyRange}
-                                easyMode={easyMode}
-                            />
-                        )}
-                     </>
+                     <Game 
+                        key={mode === 'practice' ? practiceGameTrigger : 'daily'} 
+                        user={session?.user} 
+                        isPractice={mode === 'practice'} 
+                        onPlayAgain={handleNewPracticeGame}
+                        practiceDifficultyRange={practiceDifficultyRange}
+                        easyMode={easyMode}
+                        dailyState={dailyState}
+                        setDailyState={setDailyState}
+                    />
                 )}
             </main>
             <SettingsModal 
