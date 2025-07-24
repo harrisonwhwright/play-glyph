@@ -43,70 +43,80 @@ const App = () => {
 
     // checks user session on load and listens for auth changes
     React.useEffect(() => {
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-            const today = new Date().toISOString().slice(0, 10);
-            const dailySeed = parseInt(today.replace(/-/g, ''));
-            let completedPlay = null;
+        const initializeSession = async () => {
+            const { data: { session: initialSession } } = await supabase.auth.getSession();
+            await loadDailyPuzzle(initialSession);
+            setSession(initialSession);
 
-            if (session) {
-                // user is logged in check db for a completed play
-                const { data: existingPlay } = await supabase
-                    .from('plays')
-                    .select('*')
-                    .eq('user_id', session.user.id)
-                    .eq('puzzle_id', dailySeed)
-                    .single();
-                if (existingPlay) completedPlay = existingPlay;
-            } else {
-                // user is a guest check local storage
-                const guestPlay = localStorage.getItem(`glyph-play-${today}`);
-                if (guestPlay) completedPlay = JSON.parse(guestPlay);
-            }
-            
-            setSession(session);
-            if (session) {
+            if (initialSession) {
                 setUserState('authenticated');
             } else {
-                setUserState(completedPlay ? 'guest' : 'guest_prompt');
+                const today = new Date().toISOString().slice(0, 10);
+                const guestPlay = localStorage.getItem(`glyph-play-${today}`);
+                setUserState(guestPlay ? 'guest' : 'guest_prompt');
             }
+        };
 
-            // finally build the daily state based on whether a completed game was found
-            const dailyPuzzle = generatePuzzle(dailySeed);
-            if (completedPlay) {
-                const history = completedPlay.guess_history || [];
-                setDailyState({
-                    puzzle: dailyPuzzle,
-                    isComplete: true,
-                    isWin: completedPlay.is_win,
-                    guessHistory: history,
-                    elapsedTime: Math.floor(completedPlay.duration_ms / 1000),
-                    guessesLeft: 3 - history.length,
-                    isTimerRunning: false,
-                });
-            } else {
-                // handle in-progress games for both guests and signed-in users
-                const userId = session?.user.id;
-                const inProgressKey = userId ? `glyph-in-progress-${userId}-${today}` : `glyph-in-progress-${today}`;
-                const inProgressPlay = JSON.parse(localStorage.getItem(inProgressKey));
+        initializeSession();
 
-                if (inProgressPlay) {
-                     setDailyState(inProgressPlay);
-                } else {
-                     setDailyState({
-                        puzzle: dailyPuzzle,
-                        elapsedTime: 0,
-                        isComplete: false,
-                        isWin: false,
-                        guessesLeft: 3,
-                        guessHistory: [],
-                        isTimerRunning: true,
-                    });
-                }
-            }
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setSession(session);
+            setUserState(session ? 'authenticated' : 'guest');
         });
 
         return () => subscription.unsubscribe();
     }, []);
+
+    const loadDailyPuzzle = async (currentSession) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const dailySeed = parseInt(today.replace(/-/g, ''));
+        let completedPlay = null;
+
+        if (currentSession) {
+            const { data: existingPlay } = await supabase
+                .from('plays')
+                .select('*')
+                .eq('user_id', currentSession.user.id)
+                .eq('puzzle_id', dailySeed)
+                .single();
+            if (existingPlay) completedPlay = existingPlay;
+        } else {
+            const guestPlay = localStorage.getItem(`glyph-play-${today}`);
+            if (guestPlay) completedPlay = JSON.parse(guestPlay);
+        }
+        
+        const dailyPuzzle = generatePuzzle(dailySeed);
+        if (completedPlay) {
+            const history = completedPlay.guess_history || [];
+            setDailyState({
+                puzzle: dailyPuzzle,
+                isComplete: true,
+                isWin: completedPlay.is_win,
+                guessHistory: history,
+                elapsedTime: Math.floor(completedPlay.duration_ms / 1000),
+                guessesLeft: 3 - history.length,
+                isTimerRunning: false,
+            });
+        } else {
+            const userId = currentSession?.user.id;
+            const inProgressKey = userId ? `glyph-in-progress-${userId}-${today}` : `glyph-in-progress-${today}`;
+            const inProgressPlay = JSON.parse(localStorage.getItem(inProgressKey));
+
+            if (inProgressPlay) {
+                 setDailyState(inProgressPlay);
+            } else {
+                 setDailyState({
+                    puzzle: dailyPuzzle,
+                    elapsedTime: 0,
+                    isComplete: false,
+                    isWin: false,
+                    guessesLeft: 3,
+                    guessHistory: [],
+                    isTimerRunning: true,
+                });
+            }
+        }
+    };
 
     // handles the daily timer and saves progress
     React.useEffect(() => {
