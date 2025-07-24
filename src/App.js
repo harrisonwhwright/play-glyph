@@ -15,6 +15,7 @@ const App = () => {
     const [practiceGameTrigger, setPracticeGameTrigger] = React.useState(0);
     const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
     const [theme, setTheme] = React.useState(localStorage.getItem('theme') || 'light');
+    const [guestHasStarted, setGuestHasStarted] = React.useState(false); // Fix: Added state for guest flow
     
     // holds the state for the currently active game
     const [gameState, setGameState] = React.useState({
@@ -45,7 +46,6 @@ const App = () => {
     const loadDailyPuzzle = async (currentSession) => {
         const today = new Date();
         const todayStr = today.toISOString().slice(0, 10);
-        // This puzzle ID format must be consistent with what you use when saving a play.
         const dailySeed = parseInt(`10${today.toISOString().slice(2, 10).replace(/-/g, '')}`);
         
         let completedPlay = null;
@@ -94,12 +94,11 @@ const App = () => {
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setSession(session);
             setAuthReady(true);
-            // Once authentication is resolved, load the puzzle with the correct session state
             loadDailyPuzzle(session);
         });
 
         return () => subscription.unsubscribe();
-    }, []); // This effect should run only once when the component mounts
+    }, []);
 
     // handles the game timer
     React.useEffect(() => {
@@ -182,7 +181,8 @@ const App = () => {
         max: maxPracticeDifficulty
     }), [minPracticeDifficulty, maxPracticeDifficulty]);
 
-    const userState = session ? 'authenticated' : (gameState.isComplete ? 'guest' : 'guest_prompt');
+    // Fix: Updated userState derivation to use the new state variable
+    const userState = session ? 'authenticated' : (guestHasStarted || gameState.isComplete ? 'guest' : 'guest_prompt');
 
     return (
         <div className="app-container">
@@ -206,7 +206,8 @@ const App = () => {
             </header>
             <main>
                 {!authReady && <div>Loading...</div>}
-                {authReady && userState === 'guest_prompt' && <WelcomeScreen onGuestLogin={() => setUserState('guest')} />}
+                {/* Fix: Call the new state setter */}
+                {authReady && userState === 'guest_prompt' && <WelcomeScreen onGuestLogin={() => setGuestHasStarted(true)} />}
                 {authReady && (userState === 'guest' || userState === 'authenticated') && (
                      <Game 
                         key={mode === 'practice' ? practiceGameTrigger : 'daily'} 
