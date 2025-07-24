@@ -1,13 +1,17 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { generatePuzzle } from '../lib/puzzleGenerator';
 import ResultsScreen from './ResultsScreen';
 
 // a clickable black box that hides the answer
 const Spoiler = ({ value }) => {
-    const [isRevealed, setIsRevealed] = useState(false);
+    const [isRevealed, setIsRevealed] = React.useState(false);
+
     return (
-        <div className={`spoiler-box ${isRevealed ? 'revealed' : ''}`} onClick={() => setIsRevealed(true)}>
+        <div
+            className={`spoiler-box ${isRevealed ? 'revealed' : ''}`}
+            onClick={() => setIsRevealed(true)}
+        >
             <span className="spoiler-content">{value}</span>
         </div>
     );
@@ -16,31 +20,30 @@ const Spoiler = ({ value }) => {
 // the main game component
 const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode, dailyState, setDailyState }) => {
     // practice mode uses its own internal state
-    const [practicePuzzle, setPracticePuzzle] = useState(null);
-    const [practiceElapsedTime, setPracticeElapsedTime] = useState(0);
-    const [practiceIsComplete, setPracticeIsComplete] = useState(false);
-    const [practiceIsWin, setPracticeIsWin] = useState(false);
-    const [practiceGuessesLeft, setPracticeGuessesLeft] = useState(3);
-    const [practiceGuessHistory, setPracticeGuessHistory] = useState([]);
-    const [practiceIsTimerRunning, setPracticeIsTimerRunning] = useState(false);
+    const [practiceState, setPracticeState] = React.useState({
+        puzzle: null,
+        elapsedTime: 0,
+        isComplete: false,
+        isWin: false,
+        guessesLeft: 3,
+        guessHistory: [],
+        isTimerRunning: false,
+    });
 
     // shared state for both modes
-    const [inputValue, setInputValue] = useState('');
-    const [loading, setLoading] = useState(true);
-    const [showResultsPopup, setShowResultsPopup] = useState(false);
-    const [showSolution, setShowSolution] = useState(false);
+    const [inputValue, setInputValue] = React.useState('');
+    const [loading, setLoading] = React.useState(true);
+    const [showResultsPopup, setShowResultsPopup] = React.useState(false);
+    const [showSolution, setShowSolution] = React.useState(false);
 
     // determine which state to use based on the current mode
     const isDaily = !isPractice;
-    const puzzle = isDaily ? dailyState.puzzle : practicePuzzle;
-    const elapsedTime = isDaily ? dailyState.elapsedTime : practiceElapsedTime;
-    const isComplete = isDaily ? dailyState.isComplete : practiceIsComplete;
-    const isWin = isDaily ? dailyState.isWin : practiceIsWin;
-    const guessesLeft = isDaily ? dailyState.guessesLeft : practiceGuessesLeft;
-    const guessHistory = isDaily ? dailyState.guessHistory : practiceGuessHistory;
+    const gameState = isDaily ? dailyState : practiceState;
+    const setGameState = isDaily ? setDailyState : setPracticeState;
+    const { puzzle, elapsedTime, isComplete, isWin, guessesLeft, guessHistory } = gameState;
 
     // formats the text for the share button
-    const shareText = useMemo(() => {
+    const shareText = React.useMemo(() => {
         if (!puzzle) return '';
         const seedStr = puzzle.puzzle_id.toString();
         const year = seedStr.substring(2, 4);
@@ -54,22 +57,15 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
     }, [puzzle, isWin, guessHistory]);
 
     // copies share text to the clipboard
-    const handleShare = useCallback(() => {
+    const handleShare = React.useCallback(() => {
         navigator.clipboard.writeText(shareText).then(() => {
             alert("Results copied to clipboard!");
         }).catch(err => console.error('Failed to copy', err));
     }, [shareText]);
 
     // handles all logic when the game ends
-    const endGame = useCallback((winState, finalHistory) => {
-        if (isDaily) {
-            setDailyState(s => ({ ...s, isTimerRunning: false, isComplete: true, isWin: winState, guessHistory: finalHistory }));
-        } else {
-            setPracticeIsTimerRunning(false);
-            setPracticeIsComplete(true);
-            setPracticeIsWin(winState);
-            setPracticeGuessHistory(finalHistory);
-        }
+    const endGame = React.useCallback((winState, finalHistory) => {
+        setGameState(s => ({ ...s, isTimerRunning: false, isComplete: true, isWin: winState, guessHistory: finalHistory }));
         setShowResultsPopup(true);
 
         const today = new Date().toISOString().slice(0, 10);
@@ -84,10 +80,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                 duration_ms: elapsedTime * 1000,
                 guess_history: finalHistory,
             };
-            const userId = user?.id;
-            const inProgressKey = userId ? `glyph-in-progress-${userId}-${today}` : `glyph-in-progress-${today}`;
-            localStorage.removeItem(inProgressKey);
-
             if (user) {
                 supabase.from('plays').insert({ ...playData, user_id: user.id }).then();
                 supabase.rpc('update_user_stats', { p_user_id: user.id, p_is_win: winState }).then();
@@ -95,10 +87,10 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                 localStorage.setItem(`glyph-play-${today}`, JSON.stringify(playData));
             }
         }
-    }, [puzzle, elapsedTime, user, isPractice, isDaily, setDailyState]);
+    }, [puzzle, elapsedTime, user, isPractice, setGameState]);
 
     // handles a user's guess submission
-    const handleSubmit = useCallback(() => {
+    const handleSubmit = React.useCallback(() => {
         if (isComplete || !inputValue || guessesLeft === 0) return;
 
         const currentGuess = parseInt(inputValue);
@@ -106,63 +98,55 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         const solved = currentGuess === puzzle.solution;
 
         if (solved) {
-            if (isDaily) setDailyState(s => ({ ...s, guessHistory: newHistory }));
-            else setPracticeGuessHistory(newHistory);
             setInputValue('');
             endGame(true, newHistory);
         } else {
             const newGuessesLeft = guessesLeft - 1;
-            if (isDaily) setDailyState(s => ({ ...s, guessHistory: newHistory, guessesLeft: newGuessesLeft }));
-            else {
-                setPracticeGuessHistory(newHistory);
-                setPracticeGuessesLeft(newGuessesLeft);
-            }
+            setGameState(s => ({ ...s, guessHistory: newHistory, guessesLeft: newGuessesLeft }));
             setInputValue('');
             if (newGuessesLeft === 0) {
                 endGame(false, newHistory);
             }
         }
-    }, [isComplete, inputValue, guessesLeft, puzzle, endGame, guessHistory, isDaily, setDailyState]);
+    }, [isComplete, inputValue, guessesLeft, puzzle, endGame, guessHistory, setGameState]);
 
     // sets up a practice game
-    useEffect(() => {
+    React.useEffect(() => {
         if (!isPractice) {
-            if (dailyState.puzzle) {
-                setLoading(false);
-                if (dailyState.isComplete) {
-                    setShowResultsPopup(true);
-                }
-            }
+            if (dailyState.puzzle) setLoading(false);
             return;
         }
         setLoading(true);
         const puzzleSeed = Date.now();
         const currentPuzzle = generatePuzzle(puzzleSeed, practiceDifficultyRange, easyMode);
-        setPracticePuzzle(currentPuzzle);
-        setPracticeElapsedTime(0);
-        setPracticeIsTimerRunning(true);
-        setPracticeGuessesLeft(3);
-        setPracticeGuessHistory([]);
+        setPracticeState({
+            puzzle: currentPuzzle,
+            elapsedTime: 0,
+            isComplete: false,
+            isWin: false,
+            guessesLeft: 3,
+            guessHistory: [],
+            isTimerRunning: true,
+        });
         setInputValue('');
-        setPracticeIsComplete(false);
         setShowResultsPopup(false);
         setShowSolution(false);
         setLoading(false);
-    }, [isPractice, onPlayAgain, practiceDifficultyRange, easyMode, dailyState.puzzle, dailyState.isComplete]);
+    }, [isPractice, onPlayAgain, practiceDifficultyRange, easyMode, dailyState.puzzle]);
     
     // handles the practice timer
-    useEffect(() => {
+    React.useEffect(() => {
         let interval;
-        if (isPractice && practiceIsTimerRunning) {
+        if (isPractice && gameState.isTimerRunning) {
             interval = setInterval(() => {
-                setPracticeElapsedTime(prevTime => prevTime + 1);
+                setGameState(s => ({...s, elapsedTime: s.elapsedTime + 1}));
             }, 1000);
         }
         return () => clearInterval(interval);
-    }, [isPractice, practiceIsTimerRunning]);
+    }, [isPractice, gameState.isTimerRunning, setGameState]);
 
     // handles physical keyboard input
-    useEffect(() => {
+    React.useEffect(() => {
         const handleKeyDown = (event) => {
             if (showResultsPopup) return;
             if (event.key >= '0' && event.key <= '9' && !isComplete) {
@@ -189,9 +173,9 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         });
     };
 
-    if (loading || !puzzle) return <div className="game-container">Loading puzzle...</div>;
+    if (loading || (isDaily && !puzzle)) return <div className="game-container">Loading puzzle...</div>;
     
-    const questionGlyph = puzzle.clues[puzzle.clues.length - 1].split(' ')[0];
+    const questionGlyph = puzzle ? puzzle.clues[puzzle.clues.length - 1].split(' ')[0] : null;
 
     return (
         <>
@@ -245,8 +229,8 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
             {showResultsPopup && (
                 <ResultsScreen 
                     isWin={isWin} 
-                    time={elapsedTime} 
-                    guessHistory={guessHistory}
+                    time={elapsedTime}
+                    guessHistory={guessHistory} 
                     onPlayAgain={onPlayAgain} 
                     isPractice={isPractice} 
                     onClose={() => setShowResultsPopup(false)}

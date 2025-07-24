@@ -16,8 +16,8 @@ const App = () => {
     const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
     const [theme, setTheme] = React.useState(localStorage.getItem('theme') || 'light');
     
-    // holds the state for the daily puzzle
-    const [dailyState, setDailyState] = React.useState({
+    // holds the state for the currently active game
+    const [gameState, setGameState] = React.useState({
         puzzle: null,
         elapsedTime: 0,
         isComplete: false,
@@ -43,44 +43,36 @@ const App = () => {
 
     // this is the main effect for handling authentication and loading the initial game state
     React.useEffect(() => {
-        // an async function to handle setting auth and loading initial data
         const initializeApp = async () => {
-            // first, try to get the current session when the app loads
             const { data: { session } } = await supabase.auth.getSession();
             setSession(session);
-            // load data based on this initial session this must finish before we stop the loading screen
             await loadDailyPuzzle(session);
 
-            // now, set up a listener for any future auth changes (sign in, sign out)
-            const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-                setSession(session);
-                // when auth state changes, we must reload the daily puzzle state
-                // this handles the case where a guest plays then signs in, or a user signs out
-                await loadDailyPuzzle(session);
+            const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+                setSession(newSession);
+                await loadDailyPuzzle(newSession);
             });
 
-            return () => {
-                subscription.unsubscribe();
-            };
+            return () => subscription.unsubscribe();
         };
 
         initializeApp();
     }, []);
 
-    // loads the daily puzzle checking for completed or in-progress games
+    // loads the daily puzzle checking for completed games
     const loadDailyPuzzle = async (currentSession) => {
         const today = new Date().toISOString().slice(0, 10);
         const dailySeed = parseInt(today.replace(/-/g, ''));
         let completedPlay = null;
 
         if (currentSession) {
-            const { data: existingPlay } = await supabase
+            const { data } = await supabase
                 .from('plays')
                 .select('*')
                 .eq('user_id', currentSession.user.id)
                 .eq('puzzle_id', dailySeed)
                 .single();
-            if (existingPlay) completedPlay = existingPlay;
+            if (data) completedPlay = data;
         } else {
             const guestPlay = localStorage.getItem(`glyph-play-${today}`);
             if (guestPlay) completedPlay = JSON.parse(guestPlay);
@@ -90,7 +82,7 @@ const App = () => {
 
         if (completedPlay) {
             const history = completedPlay.guess_history || [];
-            setDailyState({
+            setGameState({
                 puzzle: dailyPuzzle,
                 isComplete: true,
                 isWin: completedPlay.is_win,
@@ -100,26 +92,17 @@ const App = () => {
                 isTimerRunning: false,
             });
         } else {
-            const userId = currentSession?.user.id;
-            const inProgressKey = userId ? `glyph-in-progress-${userId}-${today}` : `glyph-in-progress-${today}`;
-            const inProgressPlay = JSON.parse(localStorage.getItem(inProgressKey));
-
-            if (inProgressPlay) {
-                 setDailyState(inProgressPlay);
-            } else {
-                 setDailyState({
-                    puzzle: dailyPuzzle,
-                    elapsedTime: 0,
-                    isComplete: false,
-                    isWin: false,
-                    guessesLeft: 3,
-                    guessHistory: [],
-                    isTimerRunning: true,
-                });
-            }
+             setGameState({
+                puzzle: dailyPuzzle,
+                elapsedTime: 0,
+                isComplete: false,
+                isWin: false,
+                guessesLeft: 3,
+                guessHistory: [],
+                isTimerRunning: true,
+            });
         }
         
-        // finally set the user state to stop the loading screen
         if (currentSession) {
              setUserState('authenticated');
         } else {
@@ -127,24 +110,16 @@ const App = () => {
         }
     };
 
-    // handles the daily timer and saves progress
+    // handles the game timer
     React.useEffect(() => {
         let interval;
-        const today = new Date().toISOString().slice(0, 10);
-        const userId = session?.user.id;
-
-        if (mode === 'daily' && dailyState.isTimerRunning && !dailyState.isComplete) {
+        if (gameState.isTimerRunning && !gameState.isComplete) {
             interval = setInterval(() => {
-                setDailyState(s => {
-                    const newState = { ...s, elapsedTime: s.elapsedTime + 1 };
-                    const inProgressKey = userId ? `glyph-in-progress-${userId}-${today}` : `glyph-in-progress-${today}`;
-                    localStorage.setItem(inProgressKey, JSON.stringify(newState));
-                    return newState;
-                });
+                setGameState(s => ({ ...s, elapsedTime: s.elapsedTime + 1 }));
             }, 1000);
         }
         return () => clearInterval(interval);
-    }, [mode, dailyState.isTimerRunning, dailyState.isComplete, session]);
+    }, [gameState.isTimerRunning, gameState.isComplete]);
     
     // signs the user out
     const handleSignOut = async () => {
@@ -247,8 +222,8 @@ const App = () => {
                         onPlayAgain={handleNewPracticeGame}
                         practiceDifficultyRange={practiceDifficultyRange}
                         easyMode={easyMode}
-                        dailyState={dailyState}
-                        setDailyState={setDailyState}
+                        dailyState={gameState}
+                        setDailyState={setGameState}
                     />
                 )}
             </main>
