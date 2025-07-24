@@ -49,13 +49,14 @@ const App = () => {
             const dailyPuzzle = generatePuzzle(dailySeed);
 
             let completedPlay = null;
+            const userId = currentSession?.user?.id;
 
-            if (currentSession) {
+            if (userId) {
                 // check if the signed-in user has already played today
                 const { data: existingPlay } = await supabase
                     .from('plays')
                     .select('*')
-                    .eq('user_id', currentSession.user.id)
+                    .eq('user_id', userId)
                     .eq('puzzle_id', dailySeed)
                     .single();
                 if (existingPlay) {
@@ -66,6 +67,14 @@ const App = () => {
                 if (guestPlay) {
                     completedPlay = JSON.parse(guestPlay);
                 }
+            }
+            
+            // set user state before setting daily state
+            setSession(currentSession);
+            if (currentSession) {
+                setUserState('authenticated');
+            } else {
+                setUserState(completedPlay ? 'guest' : 'guest_prompt');
             }
 
             if (completedPlay) {
@@ -80,23 +89,22 @@ const App = () => {
                     isTimerRunning: false,
                 });
             } else {
-                setDailyState({
-                    puzzle: dailyPuzzle,
-                    elapsedTime: 0,
-                    isComplete: false,
-                    isWin: false,
-                    guessesLeft: 3,
-                    guessHistory: [],
-                    isTimerRunning: true,
-                });
-            }
+                const inProgressKey = userId ? `glyph-in-progress-${userId}-${today}` : `glyph-in-progress-${today}`;
+                const inProgressPlay = JSON.parse(localStorage.getItem(inProgressKey));
 
-            // now that data is loaded, set the final user state
-            setSession(currentSession);
-            if (currentSession) {
-                setUserState('authenticated');
-            } else {
-                setUserState(completedPlay ? 'guest' : 'guest_prompt');
+                if (inProgressPlay) {
+                     setDailyState(inProgressPlay);
+                } else {
+                     setDailyState({
+                        puzzle: dailyPuzzle,
+                        elapsedTime: 0,
+                        isComplete: false,
+                        isWin: false,
+                        guessesLeft: 3,
+                        guessHistory: [],
+                        isTimerRunning: true,
+                    });
+                }
             }
         };
 
@@ -111,16 +119,24 @@ const App = () => {
         return () => subscription.unsubscribe();
     }, []);
 
-    // handles the daily timer, now managed in App
+    // handles the daily timer and saves progress
     useEffect(() => {
         let interval;
+        const today = new Date().toISOString().slice(0, 10);
+        const userId = session?.user?.id;
+
         if (mode === 'daily' && dailyState.isTimerRunning && !dailyState.isComplete) {
             interval = setInterval(() => {
-                setDailyState(s => ({ ...s, elapsedTime: s.elapsedTime + 1 }));
+                setDailyState(s => {
+                    const newState = { ...s, elapsedTime: s.elapsedTime + 1 };
+                    const inProgressKey = userId ? `glyph-in-progress-${userId}-${today}` : `glyph-in-progress-${today}`;
+                    localStorage.setItem(inProgressKey, JSON.stringify(newState));
+                    return newState;
+                });
             }, 1000);
         }
         return () => clearInterval(interval);
-    }, [mode, dailyState.isTimerRunning, dailyState.isComplete]);
+    }, [mode, dailyState.isTimerRunning, dailyState.isComplete, session, userState]);
     
     // signs the user out
     const handleSignOut = async () => {

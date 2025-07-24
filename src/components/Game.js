@@ -1,17 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { generatePuzzle } from '../lib/puzzleGenerator';
 import ResultsScreen from './ResultsScreen';
 
 // a clickable black box that hides the answer
 const Spoiler = ({ value }) => {
     const [isRevealed, setIsRevealed] = useState(false);
-
     return (
-        <div
-            className={`spoiler-box ${isRevealed ? 'revealed' : ''}`}
-            onClick={() => setIsRevealed(true)}
-        >
+        <div className={`spoiler-box ${isRevealed ? 'revealed' : ''}`} onClick={() => setIsRevealed(true)}>
             <span className="spoiler-content">{value}</span>
         </div>
     );
@@ -67,14 +62,16 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
     // handles all logic when the game ends
     const endGame = useCallback((winState, finalHistory) => {
         if (isDaily) {
-            setDailyState(s => ({ ...s, isTimerRunning: false, isComplete: true, isWin: winState }));
+            setDailyState(s => ({ ...s, isTimerRunning: false, isComplete: true, isWin: winState, guessHistory: finalHistory }));
         } else {
             setPracticeIsTimerRunning(false);
             setPracticeIsComplete(true);
             setPracticeIsWin(winState);
+            setPracticeGuessHistory(finalHistory);
         }
         setShowResultsPopup(true);
 
+        const today = new Date().toISOString().slice(0, 10);
         if (isPractice) {
             if (user && winState) {
                 supabase.rpc('increment_practice_wins', { p_user_id: user.id }).then();
@@ -86,11 +83,15 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                 duration_ms: elapsedTime * 1000,
                 guess_history: finalHistory,
             };
+            const userId = user?.id;
+            const inProgressKey = userId ? `glyph-in-progress-${userId}-${today}` : `glyph-in-progress-${today}`;
+            localStorage.removeItem(inProgressKey);
+
             if (user) {
                 supabase.from('plays').insert({ ...playData, user_id: user.id }).then();
                 supabase.rpc('update_user_stats', { p_user_id: user.id, p_is_win: winState }).then();
             } else {
-                localStorage.setItem(`glyph-play-${new Date().toISOString().slice(0, 10)}`, JSON.stringify(playData));
+                localStorage.setItem(`glyph-play-${today}`, JSON.stringify(playData));
             }
         }
     }, [puzzle, elapsedTime, user, isPractice, isDaily, setDailyState]);
@@ -124,7 +125,15 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
 
     // sets up a practice game
     useEffect(() => {
-        if (!isPractice) return;
+        if (!isPractice) {
+            if (dailyState.puzzle) {
+                setLoading(false);
+                if (dailyState.isComplete) {
+                    setShowResultsPopup(true);
+                }
+            }
+            return;
+        }
         setLoading(true);
         const puzzleSeed = Date.now();
         const currentPuzzle = generatePuzzle(puzzleSeed, practiceDifficultyRange, easyMode);
@@ -138,7 +147,7 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         setShowResultsPopup(false);
         setShowSolution(false);
         setLoading(false);
-    }, [isPractice, onPlayAgain, practiceDifficultyRange, easyMode]);
+    }, [isPractice, onPlayAgain, practiceDifficultyRange, easyMode, dailyState.puzzle, dailyState.isComplete]);
     
     // handles the practice timer
     useEffect(() => {
@@ -178,21 +187,10 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
             return <div key={index}>{clue}</div>;
         });
     };
-    
-    // this effect ensures the UI correctly reflects the loaded daily state
-    useEffect(() => {
-        if(isDaily) {
-            setLoading(!dailyState.puzzle);
-            if(dailyState.isComplete) {
-                setShowResultsPopup(true);
-            }
-        }
-    }, [isDaily, dailyState]);
 
-
-    if (loading || !puzzle) return <div className="game-container">Loading puzzle...</div>;
+    if (loading || (isDaily && !puzzle)) return <div className="game-container">Loading puzzle...</div>;
     
-    const questionGlyph = puzzle.clues[puzzle.clues.length - 1].split(' ')[0];
+    const questionGlyph = puzzle ? puzzle.clues[puzzle.clues.length - 1].split(' ')[0] : null;
 
     return (
         <>
@@ -247,6 +245,7 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                 <ResultsScreen 
                     isWin={isWin} 
                     time={elapsedTime} 
+                    guessHistory={guessHistory}
                     onPlayAgain={onPlayAgain} 
                     isPractice={isPractice} 
                     onClose={() => setShowResultsPopup(false)}
