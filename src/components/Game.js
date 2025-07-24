@@ -20,10 +20,9 @@ const Spoiler = ({ value }) => {
 // The main game component
 const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode, dailyState, setDailyState }) => {
     // --- State Management ---
-    const isDaily = !isPractice;
-
-    // Separate state for practice mode to ensure no conflicts with daily state
-    const [practiceState, setPracticeState] = useState({
+    // The component now has a single internal state object.
+    // It will be initialized based on the mode (daily or practice).
+    const [gameState, setGameState] = useState({
         puzzle: null,
         elapsedTime: 0,
         isComplete: false,
@@ -34,71 +33,57 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
     });
 
     const [inputValue, setInputValue] = useState('');
-    const [loading, setLoading] = useState(true);
     const [showSolution, setShowSolution] = useState(false);
-    
-    // Use the appropriate state based on the game mode
-    const gameState = isDaily ? dailyState : practiceState;
-    const setGameState = isDaily ? setDailyState : setPracticeState;
-    const { puzzle, elapsedTime, isComplete, isWin, guessesLeft, guessHistory } = gameState;
-
-    // The results popup is controlled by its own state
     const [showResultsPopup, setShowResultsPopup] = useState(false);
 
+    // Destructure from the single internal state for cleaner access
+    const { puzzle, elapsedTime, isComplete, isWin, guessesLeft, guessHistory, isTimerRunning } = gameState;
 
     // --- Core Game Logic ---
 
-    // Function to set up a new practice game. It's wrapped in useCallback
-    // to keep its identity stable unless its dependencies change.
-    const setupPracticeGame = useCallback(() => {
-        setLoading(true);
-        const puzzleSeed = Date.now();
-        const currentPuzzle = generatePuzzle(puzzleSeed, practiceDifficultyRange, easyMode);
-        setPracticeState({
-            puzzle: currentPuzzle,
-            elapsedTime: 0,
-            isComplete: false,
-            isWin: false,
-            guessesLeft: 3,
-            guessHistory: [],
-            isTimerRunning: true, // Start timer immediately for practice
-        });
-        setInputValue('');
-        setShowResultsPopup(false);
-        setShowSolution(false);
-        setLoading(false);
-    }, [practiceDifficultyRange, easyMode]);
-
-    // This is the main effect that initializes the game.
-    // It runs when the mode (isPractice) changes or when a new practice game is requested.
+    // This is the main effect that initializes or updates the game state.
     useEffect(() => {
         if (isPractice) {
-            setupPracticeGame();
+            // PRACTICE MODE: Generate a new puzzle and set it as the internal state.
+            const puzzleSeed = Date.now();
+            const currentPuzzle = generatePuzzle(puzzleSeed, practiceDifficultyRange, easyMode);
+            setGameState({
+                puzzle: currentPuzzle,
+                elapsedTime: 0,
+                isComplete: false,
+                isWin: false,
+                guessesLeft: 3,
+                guessHistory: [],
+                isTimerRunning: true,
+            });
+            setInputValue('');
+            setShowSolution(false);
+            setShowResultsPopup(false);
         } else {
-            // For daily mode, the loading state is determined by whether the puzzle has been fetched in App.js
-            setLoading(!dailyState.puzzle);
-            // Show results popup if the daily game is already complete on load
+            // DAILY MODE: Use the state passed down from App.js.
+            // This state is already figured out (new game or completed game).
+            setGameState(dailyState);
             if (dailyState.isComplete) {
                 setShowResultsPopup(true);
             }
         }
-    }, [isPractice, onPlayAgain, dailyState.puzzle, dailyState.isComplete, setupPracticeGame]);
+    }, [isPractice, onPlayAgain, dailyState, practiceDifficultyRange, easyMode]); // Reruns when mode changes or new practice game is triggered
 
-    // Timer effect - runs only when the timer should be active
+    // Timer effect
     useEffect(() => {
         let interval;
-        if (gameState.isTimerRunning && !gameState.isComplete) {
+        if (isTimerRunning && !isComplete) {
             interval = setInterval(() => {
-                // Use functional update to ensure we're always updating the correct state
                 setGameState(s => ({ ...s, elapsedTime: s.elapsedTime + 1 }));
             }, 1000);
         }
         return () => clearInterval(interval);
-    }, [gameState.isTimerRunning, gameState.isComplete, setGameState]);
+    }, [isTimerRunning, isComplete]);
 
     // Handles the end of a game
     const endGame = useCallback((winState, finalHistory) => {
-        setGameState(s => ({ ...s, isTimerRunning: false, isComplete: true, isWin: winState, guessHistory: finalHistory }));
+        const finalState = { ...gameState, isTimerRunning: false, isComplete: true, isWin: winState, guessHistory: finalHistory };
+        setGameState(finalState);
         setShowResultsPopup(true);
 
         if (isPractice) {
@@ -106,7 +91,8 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                 supabase.rpc('increment_practice_wins', { p_user_id: user.id }).then();
             }
         } else {
-            // Saving logic for daily game
+            // In daily mode, we also need to update the parent App component's state
+            setDailyState(finalState);
             const playData = {
                 puzzle_id: puzzle.puzzle_id,
                 is_win: winState,
@@ -125,7 +111,7 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                 localStorage.setItem(`glyph-play-${utcDateStr}`, JSON.stringify(playData));
             }
         }
-    }, [puzzle, elapsedTime, user, isPractice, setGameState]);
+    }, [gameState, setDailyState, user, isPractice, puzzle, elapsedTime]);
 
     // Handles guess submission
     const handleSubmit = useCallback(() => {
@@ -146,7 +132,7 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                 endGame(false, newHistory);
             }
         }
-    }, [isComplete, inputValue, guessesLeft, puzzle, endGame, guessHistory, setGameState]);
+    }, [isComplete, inputValue, guessesLeft, puzzle, guessHistory, endGame]);
 
     // --- Keyboard Input ---
     useEffect(() => {
@@ -194,7 +180,7 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
     
     // --- Render Logic ---
     const renderClues = () => {
-        if (!puzzle || !puzzle.clues) return null;
+        if (!puzzle || !puzzle.clues || puzzle.clues.length === 0) return null;
         return puzzle.clues.map((clue, index) => {
             const isQuestion = index === puzzle.clues.length - 1;
             if (isQuestion && isComplete && isWin) {
@@ -204,17 +190,14 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         });
     };
 
-    if (loading) {
+    // This is the main safeguard against a blank screen.
+    // It will not attempt to render the game until the puzzle object is ready.
+    if (!puzzle) {
         return <div className="game-container">Loading...</div>;
     }
-
-    if (!puzzle) {
-        // This case handles when the component is waiting for a puzzle to be generated or fetched.
-        // It's a safeguard against rendering with no data.
-        return <div className="game-container">Initializing puzzle...</div>;
-    }
     
-    const questionGlyph = puzzle.clues ? puzzle.clues[puzzle.clues.length - 1].split(' ')[0] : null;
+    // This calculation is now safe because we know 'puzzle' and 'puzzle.clues' exist.
+    const questionGlyph = puzzle.clues && puzzle.clues.length > 0 ? puzzle.clues[puzzle.clues.length - 1].split(' ')[0] : null;
 
     return (
         <>
