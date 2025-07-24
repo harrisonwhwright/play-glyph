@@ -15,7 +15,6 @@ const App = () => {
     const [practiceGameTrigger, setPracticeGameTrigger] = React.useState(0);
     const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
     const [theme, setTheme] = React.useState(localStorage.getItem('theme') || 'light');
-    const [guestHasStarted, setGuestHasStarted] = React.useState(false); // Fix: Added state for guest flow
     
     // holds the state for the currently active game
     const [gameState, setGameState] = React.useState({
@@ -42,15 +41,37 @@ const App = () => {
         localStorage.setItem('theme', theme);
     }, [theme]);
 
+    // this is the main effect for handling authentication and loading the initial game state
+    React.useEffect(() => {
+        // first, check for an existing session
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setSession(session);
+            setAuthReady(true); // set auth ready once the initial check is complete
+        });
+
+        // then, listen for any auth changes (sign in, sign out)
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setSession(session);
+        });
+
+        return () => subscription.unsubscribe();
+    }, []);
+
+    // this effect runs ONLY after we know the user's auth status
+    React.useEffect(() => {
+        if (authReady) {
+            loadDailyPuzzle(session);
+        }
+    }, [authReady, session]);
+
+
     // loads the daily puzzle, checking for completed games
     const loadDailyPuzzle = async (currentSession) => {
-        const today = new Date();
-        const todayStr = today.toISOString().slice(0, 10);
-        const dailySeed = parseInt(`10${today.toISOString().slice(2, 10).replace(/-/g, '')}`);
-        
+        const today = new Date().toISOString().slice(0, 10);
+        const dailySeed = parseInt(today.replace(/-/g, ''));
         let completedPlay = null;
 
-        if (currentSession?.user) {
+        if (currentSession) {
             const { data } = await supabase
                 .from('plays')
                 .select('*')
@@ -59,7 +80,7 @@ const App = () => {
                 .single();
             if (data) completedPlay = data;
         } else {
-            const guestPlay = localStorage.getItem(`glyph-play-${todayStr}`);
+            const guestPlay = localStorage.getItem(`glyph-play-${today}`);
             if (guestPlay) completedPlay = JSON.parse(guestPlay);
         }
         
@@ -88,17 +109,6 @@ const App = () => {
             });
         }
     };
-
-    // effect: handle authentication and load the game state
-    React.useEffect(() => {
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
-            setAuthReady(true);
-            loadDailyPuzzle(session);
-        });
-
-        return () => subscription.unsubscribe();
-    }, []);
 
     // handles the game timer
     React.useEffect(() => {
@@ -181,8 +191,7 @@ const App = () => {
         max: maxPracticeDifficulty
     }), [minPracticeDifficulty, maxPracticeDifficulty]);
 
-    // Fix: Updated userState derivation to use the new state variable
-    const userState = session ? 'authenticated' : (guestHasStarted || gameState.isComplete ? 'guest' : 'guest_prompt');
+    const userState = session ? 'authenticated' : (gameState.isComplete ? 'guest' : 'guest_prompt');
 
     return (
         <div className="app-container">
@@ -193,7 +202,7 @@ const App = () => {
                         <button className={`mode-button ${mode === 'daily' ? 'active' : ''}`} onClick={() => setMode('daily')}>Daily</button>
                         <button className={`mode-button ${mode === 'practice' ? 'active' : ''}`} onClick={() => { setMode('practice'); handleNewPracticeGame(); }}>Practice</button>
                     </div>
-                    {userState !== 'authenticated' && (
+                    {userState !== 'authenticated' && authReady && (
                         <button onClick={handleSignIn} className="auth-button google-signin-button">
                             <svg viewBox="0 0 48 48" width="20px" height="20px"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path><path fill="none" d="M0 0h48v48H0z"></path></svg>
                             <span>Sign In</span>
@@ -206,8 +215,10 @@ const App = () => {
             </header>
             <main>
                 {!authReady && <div>Loading...</div>}
-                {/* Fix: Call the new state setter */}
-                {authReady && userState === 'guest_prompt' && <WelcomeScreen onGuestLogin={() => setGuestHasStarted(true)} />}
+                {authReady && userState === 'guest_prompt' && <WelcomeScreen onGuestLogin={() => {
+                    setUserState('guest');
+                    loadDailyPuzzle(null); // explicitly load a fresh puzzle for new guest
+                }} />}
                 {authReady && (userState === 'guest' || userState === 'authenticated') && (
                      <Game 
                         key={mode === 'practice' ? practiceGameTrigger : 'daily'} 
