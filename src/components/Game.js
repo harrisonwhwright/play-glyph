@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { generatePuzzle } from '../lib/puzzleGenerator';
 import ResultsScreen from './ResultsScreen';
 
 // a clickable black box that hides the answer
