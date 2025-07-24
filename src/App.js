@@ -15,8 +15,7 @@ const App = () => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [guestHasStarted, setGuestHasStarted] = useState(false);
     const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
-    const [debugInfo, setDebugInfo] = useState(null);
-
+    
     const [gameState, setGameState] = useState({
         puzzle: null,
         elapsedTime: 0,
@@ -51,12 +50,34 @@ const App = () => {
             const utcDateStr = `${year}-${month}-${day}`;
             const dailySeed = parseInt(`${year}${month}${day}`, 10);
             
-            setDebugInfo({
-                fullUTCString: now.toUTCString(),
-                calculatedDateString: utcDateStr,
-                dailySeed: dailySeed
-            });
+            let dailyPuzzle;
+
+            // --- FETCH PUZZLE FROM DATABASE ---
+            const { data: dbPuzzle, error: dbPuzzleError } = await supabase
+                .from('puzzles')
+                .select('*')
+                .eq('puzzle_id', dailySeed)
+                .single();
+
+            if (dbPuzzleError && dbPuzzleError.code !== 'PGRST116') {
+                console.error("Error fetching daily puzzle from DB:", dbPuzzleError);
+            }
+
+            if (dbPuzzle) {
+                // Use the puzzle from the database as the source of truth
+                dailyPuzzle = {
+                    puzzle_id: dbPuzzle.puzzle_id,
+                    clues: dbPuzzle.clues, // Assuming 'clues' is a jsonb array
+                    solution: dbPuzzle.solution,
+                    values: dbPuzzle.values, // Assuming 'values' is a jsonb object
+                };
+            } else {
+                // Fallback: Generate the puzzle if it's not in the DB
+                console.warn(`Puzzle with ID ${dailySeed} not found in database. Using client-side generation as a fallback.`);
+                dailyPuzzle = generatePuzzle(dailySeed);
+            }
             
+            // --- CHECK IF PUZZLE HAS BEEN PLAYED ---
             let completedPlay = null;
 
             if (currentSession?.user) {
@@ -69,7 +90,7 @@ const App = () => {
                     .maybeSingle();
                 
                 if (error) {
-                    console.error("Error fetching play:", error);
+                    console.error("Error fetching play record:", error);
                 } else {
                     completedPlay = data;
                 }
@@ -81,8 +102,7 @@ const App = () => {
                 }
             }
             
-            const dailyPuzzle = generatePuzzle(dailySeed);
-
+            // --- SET FINAL GAME STATE ---
             if (completedPlay) {
                 const history = completedPlay.guess_history || [];
                 
@@ -233,21 +253,6 @@ const App = () => {
 
     return (
         <div className="app-container">
-            {debugInfo && (
-                <div style={{
-                    border: '2px solid red',
-                    margin: '10px',
-                    padding: '10px',
-                    fontFamily: 'monospace',
-                    color: theme === 'dark' ? 'white' : 'black'
-                }}>
-                    <h4>Debug Info (Please Screenshot)</h4>
-                    <div><strong>UTC Date String:</strong> {debugInfo.fullUTCString}</div>
-                    <div><strong>Calculated Date String:</strong> {debugInfo.calculatedDateString}</div>
-                    <div><strong>Daily Seed:</strong> {debugInfo.dailySeed}</div>
-                </div>
-            )}
-
             <header className="app-header">
                 <h1 className="app-title">Play-Glyph</h1>
                 <div className="controls-container">
