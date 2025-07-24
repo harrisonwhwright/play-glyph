@@ -15,7 +15,8 @@ const App = () => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [guestHasStarted, setGuestHasStarted] = useState(false);
     const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
-    
+    const [debugInfo, setDebugInfo] = useState(null);
+
     const [gameState, setGameState] = useState({
         puzzle: null,
         elapsedTime: 0,
@@ -43,13 +44,18 @@ const App = () => {
         const initializeDailyState = async (currentSession) => {
             setLoading(true);
             
-            // THIS IS THE FIX: We use UTC methods to get a universal date.
             const now = new Date();
             const year = now.getUTCFullYear();
-            const month = (now.getUTCMonth() + 1).toString().padStart(2, '0'); // padStart ensures "07" instead of "7"
+            const month = (now.getUTCMonth() + 1).toString().padStart(2, '0');
             const day = now.getUTCDate().toString().padStart(2, '0');
             const utcDateStr = `${year}-${month}-${day}`;
             const dailySeed = parseInt(`${year}${month}${day}`, 10);
+            
+            setDebugInfo({
+                fullUTCString: now.toUTCString(),
+                calculatedDateString: utcDateStr,
+                dailySeed: dailySeed
+            });
             
             let completedPlay = null;
 
@@ -69,7 +75,6 @@ const App = () => {
                 }
 
             } else {
-                // Use the UTC date string for the localStorage key to keep it consistent.
                 const guestPlay = localStorage.getItem(`glyph-play-${utcDateStr}`);
                 if (guestPlay) {
                     completedPlay = JSON.parse(guestPlay);
@@ -228,6 +233,21 @@ const App = () => {
 
     return (
         <div className="app-container">
+            {debugInfo && (
+                <div style={{
+                    border: '2px solid red',
+                    margin: '10px',
+                    padding: '10px',
+                    fontFamily: 'monospace',
+                    color: theme === 'dark' ? 'white' : 'black'
+                }}>
+                    <h4>Debug Info (Please Screenshot)</h4>
+                    <div><strong>UTC Date String:</strong> {debugInfo.fullUTCString}</div>
+                    <div><strong>Calculated Date String:</strong> {debugInfo.calculatedDateString}</div>
+                    <div><strong>Daily Seed:</strong> {debugInfo.dailySeed}</div>
+                </div>
+            )}
+
             <header className="app-header">
                 <h1 className="app-title">Play-Glyph</h1>
                 <div className="controls-container">
