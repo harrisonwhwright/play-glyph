@@ -52,7 +52,6 @@ const App = () => {
             
             let dailyPuzzle;
 
-            // --- FETCH PUZZLE FROM DATABASE ---
             const { data: dbPuzzle, error: dbPuzzleError } = await supabase
                 .from('puzzles')
                 .select('*')
@@ -64,20 +63,17 @@ const App = () => {
             }
 
             if (dbPuzzle) {
-                // Use the puzzle from the database as the source of truth
                 dailyPuzzle = {
                     puzzle_id: dbPuzzle.puzzle_id,
-                    clues: dbPuzzle.clues, // Assuming 'clues' is a jsonb array
+                    clues: dbPuzzle.clues,
                     solution: dbPuzzle.solution,
-                    values: dbPuzzle.values, // Assuming 'values' is a jsonb object
+                    values: dbPuzzle.values, // <-- THE FIX IS HERE
                 };
             } else {
-                // Fallback: Generate the puzzle if it's not in the DB
                 console.warn(`Puzzle with ID ${dailySeed} not found in database. Using client-side generation as a fallback.`);
                 dailyPuzzle = generatePuzzle(dailySeed);
             }
             
-            // --- CHECK IF PUZZLE HAS BEEN PLAYED ---
             let completedPlay = null;
 
             if (currentSession?.user) {
@@ -102,7 +98,6 @@ const App = () => {
                 }
             }
             
-            // --- SET FINAL GAME STATE ---
             if (completedPlay) {
                 const history = completedPlay.guess_history || [];
                 
@@ -110,8 +105,6 @@ const App = () => {
                 if (completedPlay.is_win) {
                     const wrongGuesses = history.length - 1;
                     finalGuessesLeft = 3 - wrongGuesses;
-                } else {
-                    finalGuessesLeft = 0;
                 }
 
                 setGameState({
