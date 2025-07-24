@@ -41,18 +41,30 @@ const App = () => {
         localStorage.setItem('theme', theme);
     }, [theme]);
 
-    // checks user session on load and listens for auth changes
+    // this is the main effect for handling authentication and loading the initial game state
     React.useEffect(() => {
-        // this listener is the single source of truth for the user's auth state
-        // it fires once on initial load and again whenever the user signs in or out
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        // an async function to handle setting auth and loading initial data
+        const initializeApp = async () => {
+            // first, try to get the current session when the app loads
+            const { data: { session } } = await supabase.auth.getSession();
             setSession(session);
-            // now that we know the user's auth state, load the appropriate daily game data
-            // this must finish before we stop the loading screen
+            // load data based on this initial session this must finish before we stop the loading screen
             await loadDailyPuzzle(session);
-        });
 
-        return () => subscription.unsubscribe();
+            // now, set up a listener for any future auth changes (sign in, sign out)
+            const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+                setSession(session);
+                // when auth state changes, we must reload the daily puzzle state
+                // this handles the case where a guest plays then signs in, or a user signs out
+                await loadDailyPuzzle(session);
+            });
+
+            return () => {
+                subscription.unsubscribe();
+            };
+        };
+
+        initializeApp();
     }, []);
 
     // loads the daily puzzle checking for completed or in-progress games
