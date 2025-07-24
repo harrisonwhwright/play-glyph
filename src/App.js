@@ -46,16 +46,10 @@ const App = () => {
         // this listener is the single source of truth for the user's auth state
         // it fires once on initial load and again whenever the user signs in or out
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-            await loadDailyPuzzle(session);
             setSession(session);
-
-            const today = new Date().toISOString().slice(0, 10);
-            if (session) {
-                setUserState('authenticated');
-            } else {
-                const guestPlay = localStorage.getItem(`glyph-play-${today}`);
-                setUserState(guestPlay ? 'guest' : 'guest_prompt');
-            }
+            // now that we know the user's auth state, load the appropriate daily game data
+            // this must finish before we stop the loading screen
+            await loadDailyPuzzle(session);
         });
 
         return () => subscription.unsubscribe();
@@ -111,6 +105,13 @@ const App = () => {
                     isTimerRunning: true,
                 });
             }
+        }
+        
+        // finally set the user state to stop the loading screen
+        if (currentSession) {
+             setUserState('authenticated');
+        } else {
+             setUserState(completedPlay ? 'guest' : 'guest_prompt');
         }
     };
 
