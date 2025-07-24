@@ -1,8 +1,6 @@
 import React from 'react';
 
-// the popup that shows game results
 const ResultsScreen = ({ isWin, time, guessHistory, onPlayAgain, isPractice, onClose, handleShare }) => {
-    // formats seconds into a 'minutes seconds' string
     const formatTime = (totalSeconds) => {
         const minutes = Math.floor(totalSeconds / 60);
         const seconds = totalSeconds % 60;

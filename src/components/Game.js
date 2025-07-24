@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabaseClient';
 import { generatePuzzle } from '../lib/puzzleGenerator';
 import ResultsScreen from './ResultsScreen';
 
-// a clickable black box that hides the answer
 const Spoiler = ({ value }) => {
     const [isRevealed, setIsRevealed] = React.useState(false);
 
@@ -17,9 +16,9 @@ const Spoiler = ({ value }) => {
     );
 };
 
-// the main game component
 const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode, dailyState, setDailyState }) => {
-    // practice mode uses its own internal state
+    const isDaily = !isPractice;
+    
     const [practiceState, setPracticeState] = React.useState({
         puzzle: null,
         elapsedTime: 0,
@@ -30,19 +29,15 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         isTimerRunning: false,
     });
 
-    // shared state for both modes
     const [inputValue, setInputValue] = React.useState('');
     const [loading, setLoading] = React.useState(true);
-    const [showResultsPopup, setShowResultsPopup] = React.useState(false);
+    const [showResultsPopup, setShowResultsPopup] = React.useState(isDaily && dailyState.isComplete);
     const [showSolution, setShowSolution] = React.useState(false);
 
-    // determine which state to use based on the current mode
-    const isDaily = !isPractice;
     const gameState = isDaily ? dailyState : practiceState;
     const setGameState = isDaily ? setDailyState : setPracticeState;
     const { puzzle, elapsedTime, isComplete, isWin, guessesLeft, guessHistory } = gameState;
 
-    // formats the text for the share button
     const shareText = React.useMemo(() => {
         if (!puzzle) return '';
         const seedStr = puzzle.puzzle_id.toString();
@@ -56,14 +51,12 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         return `#playglyph (${formattedDate}) ${score} ${resultSquares} https://play-glyph.com`;
     }, [puzzle, isWin, guessHistory]);
 
-    // copies share text to the clipboard
     const handleShare = React.useCallback(() => {
         navigator.clipboard.writeText(shareText).then(() => {
             alert("Results copied to clipboard!");
         }).catch(err => console.error('Failed to copy', err));
     }, [shareText]);
 
-    // handles all logic when the game ends
     const endGame = React.useCallback((winState, finalHistory) => {
         setGameState(s => ({ ...s, isTimerRunning: false, isComplete: true, isWin: winState, guessHistory: finalHistory }));
         setShowResultsPopup(true);
@@ -89,7 +82,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         }
     }, [puzzle, elapsedTime, user, isPractice, setGameState]);
 
-    // handles a user's guess submission
     const handleSubmit = React.useCallback(() => {
         if (isComplete || !inputValue || guessesLeft === 0) return;
 
@@ -110,7 +102,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         }
     }, [isComplete, inputValue, guessesLeft, puzzle, endGame, guessHistory, setGameState]);
 
-    // sets up a practice game
     React.useEffect(() => {
         if (!isPractice) {
             if (dailyState.puzzle) setLoading(false);
@@ -134,7 +125,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         setLoading(false);
     }, [isPractice, onPlayAgain, practiceDifficultyRange, easyMode, dailyState.puzzle]);
     
-    // handles the practice timer
     React.useEffect(() => {
         let interval;
         if (isPractice && gameState.isTimerRunning) {
@@ -145,7 +135,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         return () => clearInterval(interval);
     }, [isPractice, gameState.isTimerRunning, setGameState]);
 
-    // handles physical keyboard input
     React.useEffect(() => {
         const handleKeyDown = (event) => {
             if (showResultsPopup) return;
@@ -161,7 +150,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isComplete, showResultsPopup, handleSubmit]);
     
-    // renders clues highlighting the answer on a win
     const renderClues = () => {
         if (!puzzle) return null;
         return puzzle.clues.map((clue, index) => {
@@ -212,17 +200,17 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                 
                 {showSolution && puzzle && (
                      <div className="solution-key-container-horizontal">
-                         <h3 className="solution-key-title">Solution Key</h3>
-                         <div className="solution-key-grid">
-                            {Object.entries(puzzle.values)
-                                .filter(([glyph]) => glyph !== questionGlyph)
-                                .map(([glyph, value]) => (
-                                <div key={glyph} className="solution-key-item">
-                                    <span className="solution-glyph">{glyph}</span> = <Spoiler value={value} />
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                          <h3 className="solution-key-title">Solution Key</h3>
+                          <div className="solution-key-grid">
+                              {Object.entries(puzzle.values)
+                                  .filter(([glyph]) => glyph !== questionGlyph)
+                                  .map(([glyph, value]) => (
+                                  <div key={glyph} className="solution-key-item">
+                                      <span className="solution-glyph">{glyph}</span> = <Spoiler value={value} />
+                                  </div>
+                              ))}
+                          </div>
+                     </div>
                 )}
                 
             </div>
