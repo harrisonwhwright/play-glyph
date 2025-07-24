@@ -43,23 +43,64 @@ const App = () => {
 
     // checks user session on load and listens for auth changes
     useEffect(() => {
-        const setAuthInfo = (currentSession) => {
+        const setAuthAndLoadGame = async (currentSession) => {
             setSession(currentSession);
+            const today = new Date().toISOString().slice(0, 10);
+            const dailySeed = parseInt(today.replace(/-/g, ''));
+            const dailyPuzzle = generatePuzzle(dailySeed);
+
+            let completedPlay = null;
+
             if (currentSession) {
                 setUserState('authenticated');
+                // check if the signed-in user has already played today
+                const { data: existingPlay } = await supabase
+                    .from('plays')
+                    .select('*')
+                    .eq('user_id', currentSession.user.id)
+                    .eq('puzzle_id', dailySeed)
+                    .single();
+                if (existingPlay) {
+                    completedPlay = existingPlay;
+                }
             } else {
-                const today = new Date().toISOString().slice(0, 10);
                 const guestPlay = localStorage.getItem(`glyph-play-${today}`);
                 setUserState(guestPlay ? 'guest' : 'guest_prompt');
+                if (guestPlay) {
+                    completedPlay = JSON.parse(guestPlay);
+                }
+            }
+
+            if (completedPlay) {
+                const history = completedPlay.guess_history || [];
+                setDailyState({
+                    puzzle: dailyPuzzle,
+                    isComplete: true,
+                    isWin: completedPlay.is_win,
+                    guessHistory: history,
+                    elapsedTime: Math.floor(completedPlay.duration_ms / 1000),
+                    guessesLeft: 3 - history.length,
+                    isTimerRunning: false,
+                });
+            } else {
+                setDailyState({
+                    puzzle: dailyPuzzle,
+                    elapsedTime: 0,
+                    isComplete: false,
+                    isWin: false,
+                    guessesLeft: 3,
+                    guessHistory: [],
+                    isTimerRunning: true,
+                });
             }
         };
 
         supabase.auth.getSession().then(({ data: { session } }) => {
-            setAuthInfo(session);
+            setAuthAndLoadGame(session);
         });
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setAuthInfo(session);
+            setAuthAndLoadGame(session);
         });
 
         return () => subscription.unsubscribe();
@@ -76,30 +117,6 @@ const App = () => {
         return () => clearInterval(interval);
     }, [mode, dailyState.isTimerRunning, dailyState.isComplete]);
     
-    // loads or initializes the daily puzzle once on startup
-    useEffect(() => {
-        const today = new Date().toISOString().slice(0, 10);
-        const dailySeed = parseInt(today.replace(/-/g, ''));
-        const dailyPuzzle = generatePuzzle(dailySeed);
-        
-        const completedPlay = JSON.parse(localStorage.getItem(`glyph-play-${today}`));
-
-        if (completedPlay) {
-            const history = completedPlay.guess_history || [];
-            setDailyState({
-                puzzle: dailyPuzzle,
-                isComplete: true,
-                isWin: completedPlay.is_win,
-                guessHistory: history,
-                elapsedTime: Math.floor(completedPlay.duration_ms / 1000),
-                guessesLeft: 3 - history.length,
-                isTimerRunning: false,
-            });
-        } else {
-            setDailyState(s => ({ ...s, puzzle: dailyPuzzle, isTimerRunning: true }));
-        }
-    }, []);
-
     // signs the user out
     const handleSignOut = async () => {
         await supabase.auth.signOut();
