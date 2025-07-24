@@ -35,21 +35,34 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
     const [showSolution, setShowSolution] = React.useState(false);
 
     const gameState = isDaily ? dailyState : practiceState;
-    const setGameState = isDaily ? setDailyState : setPracticeState;
+    const setGameState = isDaily ? setDailyState : practiceState;
     const { puzzle, elapsedTime, isComplete, isWin, guessesLeft, guessHistory } = gameState;
 
     const shareText = React.useMemo(() => {
         if (!puzzle) return '';
+
+        // --- NEW TIME FORMATTING ---
+        const minutes = Math.floor(elapsedTime / 60);
+        const seconds = elapsedTime % 60;
+        let timeString = '';
+        if (minutes > 0) {
+            timeString += `${minutes}m`;
+        }
+        timeString += `${seconds}s`;
+
+        // --- NEW DATE FORMATTING ---
         const seedStr = puzzle.puzzle_id.toString();
-        const year = seedStr.substring(2, 4);
+        const year = seedStr.substring(0, 4);
         const month = seedStr.substring(4, 6);
         const day = seedStr.substring(6, 8);
-        const formattedDate = `${day}.${month}.${year}`;
+        const formattedDate = `${year}.${month}.${day}`; // YYYY.MM.DD
+        
         const score = isWin ? `${guessHistory.length}/3` : 'X/3';
         const resultSquares = guessHistory.map(g => g === puzzle.solution ? '🟩' : '⬛').join('');
         
-        return `#playglyph (${formattedDate}) ${score} ${resultSquares} https://play-glyph.com`;
-    }, [puzzle, isWin, guessHistory]);
+        // New structure: #playglyph (YYYY.MM.DD) TIME SCORE SQUARES URL
+        return `#playglyph (${formattedDate}) ${timeString} ${score} ${resultSquares} https://play-glyph.com`;
+    }, [puzzle, isWin, guessHistory, elapsedTime]);
 
     const handleShare = React.useCallback(() => {
         navigator.clipboard.writeText(shareText).then(() => {
