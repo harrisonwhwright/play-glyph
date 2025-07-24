@@ -189,9 +189,9 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         });
     };
 
-    if (loading || (isDaily && !puzzle)) return <div className="game-container">Loading puzzle...</div>;
+    if (loading || !puzzle) return <div className="game-container">Loading puzzle...</div>;
     
-    const questionGlyph = puzzle ? puzzle.clues[puzzle.clues.length - 1].split(' ')[0] : null;
+    const questionGlyph = puzzle.clues[puzzle.clues.length - 1].split(' ')[0];
 
     return (
         <>
