@@ -44,7 +44,6 @@ const App = () => {
     // checks user session on load and listens for auth changes
     useEffect(() => {
         const setAuthAndLoadGame = async (currentSession) => {
-            setSession(currentSession);
             const today = new Date().toISOString().slice(0, 10);
             const dailySeed = parseInt(today.replace(/-/g, ''));
             const dailyPuzzle = generatePuzzle(dailySeed);
@@ -52,7 +51,6 @@ const App = () => {
             let completedPlay = null;
 
             if (currentSession) {
-                setUserState('authenticated');
                 // check if the signed-in user has already played today
                 const { data: existingPlay } = await supabase
                     .from('plays')
@@ -65,7 +63,6 @@ const App = () => {
                 }
             } else {
                 const guestPlay = localStorage.getItem(`glyph-play-${today}`);
-                setUserState(guestPlay ? 'guest' : 'guest_prompt');
                 if (guestPlay) {
                     completedPlay = JSON.parse(guestPlay);
                 }
@@ -92,6 +89,14 @@ const App = () => {
                     guessHistory: [],
                     isTimerRunning: true,
                 });
+            }
+
+            // now that data is loaded, set the final user state
+            setSession(currentSession);
+            if (currentSession) {
+                setUserState('authenticated');
+            } else {
+                setUserState(completedPlay ? 'guest' : 'guest_prompt');
             }
         };
 
