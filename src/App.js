@@ -40,45 +40,43 @@ const App = () => {
     }, [theme]);
     
     useEffect(() => {
-        // This function is the single source of truth for loading the daily game state.
         const initializeDailyState = async (currentSession) => {
+            setLoading(true);
             const today = new Date();
             const todayStr = today.toISOString().slice(0, 10);
             const dailySeed = parseInt(todayStr.replace(/-/g, ''), 10);
             
-            console.log(`[Test] Initializing with seed: ${dailySeed}`);
-            
             let completedPlay = null;
 
             if (currentSession?.user) {
-                console.log(`[Test] User ${currentSession.user.id} found. Querying database for puzzle_id ${dailySeed}.`);
+                // THIS IS THE FIX: We use .limit(1).maybeSingle()
+                // This tells Supabase to "find all matching rows, give me the first one, 
+                // and it's okay if you find zero rows (return null) or more than one (just give me the first)."
+                // This prevents the 406 error.
                 const { data, error } = await supabase
                     .from('plays')
                     .select('*')
                     .eq('user_id', currentSession.user.id)
                     .eq('puzzle_id', dailySeed)
-                    .single();
+                    .limit(1)
+                    .maybeSingle();
                 
-                if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found, which is not an error here.
-                    console.error("[Test] Supabase Error:", error);
+                if (error) {
+                    console.error("Error fetching play:", error);
                 } else {
-                    console.log("[Test] Supabase data received:", data);
                     completedPlay = data;
                 }
+
             } else {
-                console.log("[Test] No user session. Checking localStorage.");
                 const guestPlay = localStorage.getItem(`glyph-play-${todayStr}`);
                 if (guestPlay) {
-                    console.log("[Test] Found guest play in localStorage.");
                     completedPlay = JSON.parse(guestPlay);
                 }
             }
             
             const dailyPuzzle = generatePuzzle(dailySeed);
-            console.log("[Test] Puzzle generated for seed:", dailySeed, "Solution:", dailyPuzzle.solution);
 
             if (completedPlay) {
-                console.log("[Test] Existing play found. Setting state to COMPLETE.");
                 const history = completedPlay.guess_history || [];
                 setGameState({
                     puzzle: dailyPuzzle,
@@ -90,7 +88,6 @@ const App = () => {
                     isTimerRunning: false,
                 });
             } else {
-                console.log("[Test] No existing play found. Setting state to NEW GAME.");
                 setGameState({
                     puzzle: dailyPuzzle,
                     elapsedTime: 0,
@@ -101,30 +98,16 @@ const App = () => {
                     isTimerRunning: true,
                 });
             }
-            setLoading(false); // We are ready to render.
+            setLoading(false);
         };
 
-        // On initial mount, get the session and initialize the app.
-        supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
-            setSession(initialSession);
-            initializeDailyState(initialSession);
-        });
-
-        // Then, set up the listener for any *future* auth changes (user logs in/out).
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
-            // Only re-initialize if the session has actually changed.
-            const oldSessionId = session?.user?.id;
-            const newSessionId = newSession?.user?.id;
-            if (oldSessionId !== newSessionId) {
-                console.log("[Test] Auth state changed. Re-initializing.");
-                setSession(newSession);
-                setLoading(true); // Show loading screen during transition.
-                initializeDailyState(newSession);
-            }
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setSession(session);
+            initializeDailyState(session);
         });
 
         return () => subscription.unsubscribe();
-    }, []); // <-- This empty array is crucial. This effect runs only once on mount.
+    }, []); // <-- Empty dependency array ensures this runs only once.
 
     useEffect(() => {
         let interval;
