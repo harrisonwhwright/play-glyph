@@ -8,7 +8,7 @@ A little daily logic puzzle game, kind of like Wordle but with numbers and symbo
 **Built with:**
 - React (frontend)
 - Supabase (PostgreSQL, serverless functions)
-- Google Cloud Console + AI stuff
+- Google Cloud Console
 - Deployed on Vercel
 
 ## Puzzle generation
