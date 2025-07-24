@@ -116,7 +116,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         }
     }, [isComplete, inputValue, guessesLeft, puzzle, endGame, guessHistory, setGameState]);
     
-    // Effect to handle DAILY mode loading state
     React.useEffect(() => {
         if (!isPractice) {
             if (dailyState.puzzle) {
@@ -125,7 +124,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         }
     }, [isPractice, dailyState]);
 
-    // Effect to handle PRACTICE mode setup
     React.useEffect(() => {
         if (isPractice) {
             setLoading(true);
@@ -147,7 +145,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         }
     }, [isPractice, onPlayAgain, practiceDifficultyRange, easyMode]);
     
-    // Effect for the game timer (applies to practice mode only now)
     React.useEffect(() => {
         let interval;
         if (isPractice && gameState.isTimerRunning) {
@@ -174,7 +171,7 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
     }, [isComplete, showResultsPopup, handleSubmit]);
     
     const renderClues = () => {
-        if (!puzzle) return null;
+        if (!puzzle || !puzzle.clues) return null;
         return puzzle.clues.map((clue, index) => {
             const isQuestion = index === puzzle.clues.length - 1;
             if (isQuestion && isComplete && isWin) {
@@ -187,7 +184,7 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
     if (loading) return <div className="game-container">Loading puzzle...</div>;
     if (isDaily && !puzzle) return <div className="game-container">Loading puzzle...</div>;
     
-    const questionGlyph = puzzle ? puzzle.clues[puzzle.clues.length - 1].split(' ')[0] : null;
+    const questionGlyph = puzzle && puzzle.clues ? puzzle.clues[puzzle.clues.length - 1].split(' ')[0] : null;
 
     return (
         <>
@@ -222,7 +219,7 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                     </div>
                 )}
                 
-                {showSolution && puzzle && (
+                {showSolution && puzzle && puzzle.values && ( // <-- THE FIX IS HERE
                      <div className="solution-key-container-horizontal">
                           <h3 className="solution-key-title">Solution Key</h3>
                           <div className="solution-key-grid">
