@@ -33,12 +33,10 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
     const [loading, setLoading] = useState(true);
     const [showSolution, setShowSolution] = useState(false);
     
-    // Determine which state to use based on the current mode
     const gameState = isDaily ? dailyState : practiceState;
     const setGameState = isDaily ? setDailyState : setPracticeState;
     const { puzzle, elapsedTime, isComplete, isWin, guessesLeft, guessHistory } = gameState || {};
 
-    // This state now correctly determines if the popup should show initially or after a game ends.
     const [showResultsPopup, setShowResultsPopup] = useState(false);
     useEffect(() => {
         if (isComplete) {
@@ -49,9 +47,11 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
     const shareText = useMemo(() => {
         if (!puzzle) return '';
         const seedStr = puzzle.puzzle_id.toString();
-        const year = seedStr.substring(2, 4);
-        const month = seedStr.substring(4, 6);
-        const day = seedStr.substring(6, 8);
+        // This logic seems potentially flawed if seedStr isn't always the same length.
+        // Let's assume generatePuzzle creates a consistent ID format.
+        const year = seedStr.substring(4, 6);
+        const month = seedStr.substring(6, 8);
+        const day = seedStr.substring(8, 10);
         const formattedDate = `${day}.${month}.${year}`;
         const score = isWin ? `${guessHistory.length}/3` : 'X/3';
         const resultSquares = guessHistory.map(g => g === puzzle.solution ? '🟩' : '⬛').join('');
@@ -80,8 +80,14 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                 duration_ms: elapsedTime * 1000,
                 guess_history: finalHistory,
             };
+
+            // This is the crucial log for testing.
+            console.log(`[Test] Saving play with puzzle_id: ${playData.puzzle_id}`, playData);
+
             if (user) {
-                supabase.from('plays').insert({ ...playData, user_id: user.id }).then();
+                supabase.from('plays').insert({ ...playData, user_id: user.id }).then(({error}) => {
+                    if (error) console.error("[Test] Error saving play:", error);
+                });
                 supabase.rpc('update_user_stats', { p_user_id: user.id, p_is_win: winState }).then();
             } else {
                 localStorage.setItem(`glyph-play-${todayStr}`, JSON.stringify(playData));

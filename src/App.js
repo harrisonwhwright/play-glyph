@@ -9,7 +9,7 @@ import './App.css';
 
 const App = () => {
     const [session, setSession] = useState(null);
-    const [authReady, setAuthReady] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [mode, setMode] = useState('daily');
     const [practiceGameTrigger, setPracticeGameTrigger] = useState(0);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -38,31 +38,47 @@ const App = () => {
         document.body.className = theme;
         localStorage.setItem('theme', theme);
     }, [theme]);
-
+    
     useEffect(() => {
-        const loadDailyData = async (currentSession) => {
+        // This function is the single source of truth for loading the daily game state.
+        const initializeDailyState = async (currentSession) => {
             const today = new Date();
             const todayStr = today.toISOString().slice(0, 10);
             const dailySeed = parseInt(todayStr.replace(/-/g, ''), 10);
             
+            console.log(`[Test] Initializing with seed: ${dailySeed}`);
+            
             let completedPlay = null;
 
             if (currentSession?.user) {
-                const { data } = await supabase
+                console.log(`[Test] User ${currentSession.user.id} found. Querying database for puzzle_id ${dailySeed}.`);
+                const { data, error } = await supabase
                     .from('plays')
                     .select('*')
                     .eq('user_id', currentSession.user.id)
                     .eq('puzzle_id', dailySeed)
                     .single();
-                if (data) completedPlay = data;
+                
+                if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found, which is not an error here.
+                    console.error("[Test] Supabase Error:", error);
+                } else {
+                    console.log("[Test] Supabase data received:", data);
+                    completedPlay = data;
+                }
             } else {
+                console.log("[Test] No user session. Checking localStorage.");
                 const guestPlay = localStorage.getItem(`glyph-play-${todayStr}`);
-                if (guestPlay) completedPlay = JSON.parse(guestPlay);
+                if (guestPlay) {
+                    console.log("[Test] Found guest play in localStorage.");
+                    completedPlay = JSON.parse(guestPlay);
+                }
             }
             
             const dailyPuzzle = generatePuzzle(dailySeed);
+            console.log("[Test] Puzzle generated for seed:", dailySeed, "Solution:", dailyPuzzle.solution);
 
             if (completedPlay) {
+                console.log("[Test] Existing play found. Setting state to COMPLETE.");
                 const history = completedPlay.guess_history || [];
                 setGameState({
                     puzzle: dailyPuzzle,
@@ -74,7 +90,8 @@ const App = () => {
                     isTimerRunning: false,
                 });
             } else {
-                 setGameState({
+                console.log("[Test] No existing play found. Setting state to NEW GAME.");
+                setGameState({
                     puzzle: dailyPuzzle,
                     elapsedTime: 0,
                     isComplete: false,
@@ -84,16 +101,30 @@ const App = () => {
                     isTimerRunning: true,
                 });
             }
-            setAuthReady(true);
+            setLoading(false); // We are ready to render.
         };
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
-            loadDailyData(session);
+        // On initial mount, get the session and initialize the app.
+        supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+            setSession(initialSession);
+            initializeDailyState(initialSession);
         });
-        
+
+        // Then, set up the listener for any *future* auth changes (user logs in/out).
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+            // Only re-initialize if the session has actually changed.
+            const oldSessionId = session?.user?.id;
+            const newSessionId = newSession?.user?.id;
+            if (oldSessionId !== newSessionId) {
+                console.log("[Test] Auth state changed. Re-initializing.");
+                setSession(newSession);
+                setLoading(true); // Show loading screen during transition.
+                initializeDailyState(newSession);
+            }
+        });
+
         return () => subscription.unsubscribe();
-    }, []);
+    }, []); // <-- This empty array is crucial. This effect runs only once on mount.
 
     useEffect(() => {
         let interval;
@@ -132,7 +163,7 @@ const App = () => {
 
     const handleMaxDifficultyChange = (e) => {
         const newMax = parseInt(e.target.value, 10);
-         setLastCustomDifficulty(prev => ({ ...prev, max: newMax }));
+        setLastCustomDifficulty(prev => ({ ...prev, max: newMax }));
         setMaxPracticeDifficulty(newMax);
         localStorage.setItem('maxDifficulty', newMax);
         if (newMax < minPracticeDifficulty) {
@@ -167,10 +198,8 @@ const App = () => {
         max: maxPracticeDifficulty
     }), [minPracticeDifficulty, maxPracticeDifficulty]);
 
-    const userState = session ? 'authenticated' : (guestHasStarted || gameState.isComplete ? 'guest' : 'guest_prompt');
-
     const renderContent = () => {
-        if (!authReady || (mode === 'daily' && !gameState.puzzle)) {
+        if (loading) {
             return <div>Loading...</div>;
         }
 
@@ -231,7 +260,7 @@ const App = () => {
                 onClose={() => setIsSettingsOpen(false)} 
                 onSignOut={handleSignOut}
                 onSignIn={handleSignIn}
-                userState={userState}
+                userState={session ? 'authenticated' : (guestHasStarted || gameState.isComplete ? 'guest' : 'guest_prompt')}
                 theme={theme}
                 onThemeChange={handleThemeChange}
                 minDifficulty={minPracticeDifficulty}
