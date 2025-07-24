@@ -41,7 +41,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
     const shareText = React.useMemo(() => {
         if (!puzzle) return '';
 
-        // --- NEW TIME FORMATTING ---
         const minutes = Math.floor(elapsedTime / 60);
         const seconds = elapsedTime % 60;
         let timeString = '';
@@ -50,17 +49,15 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         }
         timeString += `${seconds}s`;
 
-        // --- NEW DATE FORMATTING ---
         const seedStr = puzzle.puzzle_id.toString();
         const year = seedStr.substring(0, 4);
         const month = seedStr.substring(4, 6);
         const day = seedStr.substring(6, 8);
-        const formattedDate = `${year}.${month}.${day}`; // YYYY.MM.DD
+        const formattedDate = `${year}.${month}.${day}`;
         
         const score = isWin ? `${guessHistory.length}/3` : 'X/3';
         const resultSquares = guessHistory.map(g => g === puzzle.solution ? '🟩' : '⬛').join('');
         
-        // New structure: #playglyph (YYYY.MM.DD) TIME SCORE SQUARES URL
         return `#playglyph (${formattedDate}) ${timeString} ${score} ${resultSquares} https://play-glyph.com`;
     }, [puzzle, isWin, guessHistory, elapsedTime]);
 
@@ -118,30 +115,39 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
             }
         }
     }, [isComplete, inputValue, guessesLeft, puzzle, endGame, guessHistory, setGameState]);
-
+    
+    // Effect to handle DAILY mode loading state
     React.useEffect(() => {
         if (!isPractice) {
-            if (dailyState.puzzle) setLoading(false);
-            return;
+            if (dailyState.puzzle) {
+                setLoading(false);
+            }
         }
-        setLoading(true);
-        const puzzleSeed = Date.now();
-        const currentPuzzle = generatePuzzle(puzzleSeed, practiceDifficultyRange, easyMode);
-        setPracticeState({
-            puzzle: currentPuzzle,
-            elapsedTime: 0,
-            isComplete: false,
-            isWin: false,
-            guessesLeft: 3,
-            guessHistory: [],
-            isTimerRunning: true,
-        });
-        setInputValue('');
-        setShowResultsPopup(false);
-        setShowSolution(false);
-        setLoading(false);
-    }, [isPractice, onPlayAgain, practiceDifficultyRange, easyMode, dailyState.puzzle]);
+    }, [isPractice, dailyState]);
+
+    // Effect to handle PRACTICE mode setup
+    React.useEffect(() => {
+        if (isPractice) {
+            setLoading(true);
+            const puzzleSeed = Date.now();
+            const currentPuzzle = generatePuzzle(puzzleSeed, practiceDifficultyRange, easyMode);
+            setPracticeState({
+                puzzle: currentPuzzle,
+                elapsedTime: 0,
+                isComplete: false,
+                isWin: false,
+                guessesLeft: 3,
+                guessHistory: [],
+                isTimerRunning: true,
+            });
+            setInputValue('');
+            setShowResultsPopup(false);
+            setShowSolution(false);
+            setLoading(false);
+        }
+    }, [isPractice, onPlayAgain, practiceDifficultyRange, easyMode]);
     
+    // Effect for the game timer (applies to practice mode only now)
     React.useEffect(() => {
         let interval;
         if (isPractice && gameState.isTimerRunning) {
@@ -178,7 +184,8 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         });
     };
 
-    if (loading || (isDaily && !puzzle)) return <div className="game-container">Loading puzzle...</div>;
+    if (loading) return <div className="game-container">Loading puzzle...</div>;
+    if (isDaily && !puzzle) return <div className="game-container">Loading puzzle...</div>;
     
     const questionGlyph = puzzle ? puzzle.clues[puzzle.clues.length - 1].split(' ')[0] : null;
 
