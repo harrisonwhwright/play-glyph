@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { generatePuzzle } from '../lib/puzzleGenerator';
 import ResultsScreen from './ResultsScreen';
 
 const Spoiler = ({ value }) => {
-    const [isRevealed, setIsRevealed] = React.useState(false);
+    const [isRevealed, setIsRevealed] = useState(false);
 
     return (
         <div
@@ -18,8 +18,9 @@ const Spoiler = ({ value }) => {
 
 const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode, dailyState, setDailyState }) => {
     const isDaily = !isPractice;
-    
-    const [practiceState, setPracticeState] = React.useState({
+
+    // Separate state for practice mode to avoid conflicts
+    const [practiceState, setPracticeState] = useState({
         puzzle: null,
         elapsedTime: 0,
         isComplete: false,
@@ -29,17 +30,20 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         isTimerRunning: false,
     });
 
-    const [inputValue, setInputValue] = React.useState('');
-    const [loading, setLoading] = React.useState(true);
-    const [showResultsPopup, setShowResultsPopup] = React.useState(isDaily && dailyState.isComplete);
-    const [showSolution, setShowSolution] = React.useState(false);
+    const [inputValue, setInputValue] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [showSolution, setShowSolution] = useState(false);
 
+    // Determine which state and setter to use based on the current mode
     const gameState = isDaily ? dailyState : practiceState;
-    const setGameState = isDaily ? setDailyState : practiceState;
+    const setGameState = isDaily ? setDailyState : setPracticeState;
     const { puzzle, elapsedTime, isComplete, isWin, guessesLeft, guessHistory } = gameState;
+    
+    // Results popup is now managed by its own state
+    const [showResultsPopup, setShowResultsPopup] = useState(isDaily && dailyState.isComplete);
 
-    const shareText = React.useMemo(() => {
-        if (!puzzle) return '';
+    const shareText = useMemo(() => {
+        if (!puzzle || isPractice) return '';
 
         const minutes = Math.floor(elapsedTime / 60);
         const seconds = elapsedTime % 60;
@@ -59,15 +63,15 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         const resultSquares = guessHistory.map(g => g === puzzle.solution ? '🟩' : '⬛').join('');
         
         return `#playglyph (${formattedDate}) ${timeString} ${score} ${resultSquares} https://play-glyph.com`;
-    }, [puzzle, isWin, guessHistory, elapsedTime]);
+    }, [puzzle, isWin, guessHistory, elapsedTime, isPractice]);
 
-    const handleShare = React.useCallback(() => {
+    const handleShare = useCallback(() => {
         navigator.clipboard.writeText(shareText).then(() => {
             alert("Results copied to clipboard!");
         }).catch(err => console.error('Failed to copy', err));
     }, [shareText]);
 
-    const endGame = React.useCallback((winState, finalHistory) => {
+    const endGame = useCallback((winState, finalHistory) => {
         setGameState(s => ({ ...s, isTimerRunning: false, isComplete: true, isWin: winState, guessHistory: finalHistory }));
         setShowResultsPopup(true);
 
@@ -96,8 +100,8 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         }
     }, [puzzle, elapsedTime, user, isPractice, setGameState]);
 
-    const handleSubmit = React.useCallback(() => {
-        if (isComplete || !inputValue || guessesLeft === 0) return;
+    const handleSubmit = useCallback(() => {
+        if (isComplete || !inputValue || guessesLeft === 0 || !puzzle) return;
 
         const currentGuess = parseInt(inputValue);
         const newHistory = [...guessHistory, currentGuess];
@@ -116,16 +120,10 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         }
     }, [isComplete, inputValue, guessesLeft, puzzle, endGame, guessHistory, setGameState]);
     
-    React.useEffect(() => {
-        if (!isPractice) {
-            if (dailyState.puzzle) {
-                setLoading(false);
-            }
-        }
-    }, [isPractice, dailyState]);
-
-    React.useEffect(() => {
+    // Effect to initialize the correct game mode
+    useEffect(() => {
         if (isPractice) {
+            // Setup for practice mode
             setLoading(true);
             const puzzleSeed = Date.now();
             const currentPuzzle = generatePuzzle(puzzleSeed, practiceDifficultyRange, easyMode);
@@ -142,20 +140,24 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
             setShowResultsPopup(false);
             setShowSolution(false);
             setLoading(false);
+        } else {
+            // Logic for daily mode
+            setLoading(!dailyState.puzzle);
         }
-    }, [isPractice, onPlayAgain, practiceDifficultyRange, easyMode]);
+    }, [isPractice, onPlayAgain, practiceDifficultyRange, easyMode, dailyState.puzzle]);
     
-    React.useEffect(() => {
+    // Effect for the game timer
+    useEffect(() => {
         let interval;
-        if (isPractice && gameState.isTimerRunning) {
+        if (gameState.isTimerRunning && !gameState.isComplete) {
             interval = setInterval(() => {
                 setGameState(s => ({...s, elapsedTime: s.elapsedTime + 1}));
             }, 1000);
         }
         return () => clearInterval(interval);
-    }, [isPractice, gameState.isTimerRunning, setGameState]);
+    }, [gameState.isTimerRunning, gameState.isComplete, setGameState]);
 
-    React.useEffect(() => {
+    useEffect(() => {
         const handleKeyDown = (event) => {
             if (showResultsPopup) return;
             if (event.key >= '0' && event.key <= '9' && !isComplete) {
@@ -182,7 +184,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
     };
 
     if (loading) return <div className="game-container">Loading puzzle...</div>;
-    if (isDaily && !puzzle) return <div className="game-container">Loading puzzle...</div>;
     
     const questionGlyph = puzzle && puzzle.clues ? puzzle.clues[puzzle.clues.length - 1].split(' ')[0] : null;
 
@@ -211,7 +212,8 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                     <button className="submit-button" disabled={isComplete} onClick={handleSubmit}>➤</button>
                 </div>
                 
-                {isComplete && !showSolution && (
+                {/* FIX: Only show Reveal Solution button in practice mode */}
+                {isPractice && isComplete && !showSolution && (
                     <div className="reveal-solution-area">
                         <button className="button reveal-button" onClick={() => setShowSolution(true)}>
                             Reveal Solution
@@ -219,7 +221,7 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                     </div>
                 )}
                 
-                {showSolution && puzzle && puzzle.values && ( // <-- THE FIX IS HERE
+                {showSolution && puzzle && puzzle.values && (
                      <div className="solution-key-container-horizontal">
                           <h3 className="solution-key-title">Solution Key</h3>
                           <div className="solution-key-grid">
