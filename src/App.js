@@ -15,7 +15,7 @@ const App = () => {
     const [practiceGameTrigger, setPracticeGameTrigger] = React.useState(0);
     const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
     const [theme, setTheme] = React.useState(localStorage.getItem('theme') || 'light');
-
+    
     // holds the state for the daily puzzle
     const [dailyState, setDailyState] = React.useState({
         puzzle: null,
@@ -26,13 +26,13 @@ const App = () => {
         guessHistory: [],
         isTimerRunning: false,
     });
-
+    
     const [minPracticeDifficulty, setMinPracticeDifficulty] = React.useState(() => parseInt(localStorage.getItem('minDifficulty') || '3', 10));
     const [maxPracticeDifficulty, setMaxPracticeDifficulty] = React.useState(() => parseInt(localStorage.getItem('maxDifficulty') || '5', 10));
     const [easyMode, setEasyMode] = React.useState(() => localStorage.getItem('easyMode') === 'true');
-    const [lastCustomDifficulty, setLastCustomDifficulty] = React.useState({
-        min: parseInt(localStorage.getItem('lastCustomMin') || '4', 10),
-        max: parseInt(localStorage.getItem('lastCustomMax') || '8', 10)
+    const [lastCustomDifficulty, setLastCustomDifficulty] = React.useState({ 
+        min: parseInt(localStorage.getItem('lastCustomMin') || '4', 10), 
+        max: parseInt(localStorage.getItem('lastCustomMax') || '8', 10) 
     });
 
     // handles theme changes and saves to local storage
@@ -43,34 +43,25 @@ const App = () => {
 
     // checks user session on load and listens for auth changes
     React.useEffect(() => {
-        const initializeApp = async () => {
-            const { data: { session: initialSession } } = await supabase.auth.getSession();
-            await loadDailyPuzzle(initialSession);
-            setSession(initialSession);
-            
+        // this listener is the single source of truth for the user's auth state
+        // it fires once on initial load and again whenever the user signs in or out
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+            await loadDailyPuzzle(session);
+            setSession(session);
+
             const today = new Date().toISOString().slice(0, 10);
-            if (initialSession) {
+            if (session) {
                 setUserState('authenticated');
             } else {
                 const guestPlay = localStorage.getItem(`glyph-play-${today}`);
                 setUserState(guestPlay ? 'guest' : 'guest_prompt');
-            }
-        };
-
-        initializeApp();
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
-            setUserState(session ? 'authenticated' : 'guest');
-            // reload daily puzzle data when auth state changes to reflect user's history
-            if (!session) { // if user logs out
-                loadDailyPuzzle(null);
             }
         });
 
         return () => subscription.unsubscribe();
     }, []);
 
+    // loads the daily puzzle checking for completed or in-progress games
     const loadDailyPuzzle = async (currentSession) => {
         const today = new Date().toISOString().slice(0, 10);
         const dailySeed = parseInt(today.replace(/-/g, ''));
@@ -90,6 +81,7 @@ const App = () => {
         }
         
         const dailyPuzzle = generatePuzzle(dailySeed);
+
         if (completedPlay) {
             const history = completedPlay.guess_history || [];
             setDailyState({
