@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React from 'react';
 import { supabase } from './lib/supabaseClient';
 import { generatePuzzle } from './lib/puzzleGenerator';
 import WelcomeScreen from './components/WelcomeScreen';
@@ -9,15 +9,15 @@ import './App.css';
 
 // the root component manages auth settings and which screen to show
 const App = () => {
-    const [session, setSession] = useState(null);
-    const [userState, setUserState] = useState('loading');
-    const [mode, setMode] = useState('daily');
-    const [practiceGameTrigger, setPracticeGameTrigger] = useState(0);
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+    const [session, setSession] = React.useState(null);
+    const [userState, setUserState] = React.useState('loading');
+    const [mode, setMode] = React.useState('daily');
+    const [practiceGameTrigger, setPracticeGameTrigger] = React.useState(0);
+    const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+    const [theme, setTheme] = React.useState(localStorage.getItem('theme') || 'light');
     
     // holds the state for the daily puzzle
-    const [dailyState, setDailyState] = useState({
+    const [dailyState, setDailyState] = React.useState({
         puzzle: null,
         elapsedTime: 0,
         isComplete: false,
@@ -27,22 +27,22 @@ const App = () => {
         isTimerRunning: false,
     });
     
-    const [minPracticeDifficulty, setMinPracticeDifficulty] = useState(() => parseInt(localStorage.getItem('minDifficulty') || '3', 10));
-    const [maxPracticeDifficulty, setMaxPracticeDifficulty] = useState(() => parseInt(localStorage.getItem('maxDifficulty') || '5', 10));
-    const [easyMode, setEasyMode] = useState(() => localStorage.getItem('easyMode') === 'true');
-    const [lastCustomDifficulty, setLastCustomDifficulty] = useState({ 
+    const [minPracticeDifficulty, setMinPracticeDifficulty] = React.useState(() => parseInt(localStorage.getItem('minDifficulty') || '3', 10));
+    const [maxPracticeDifficulty, setMaxPracticeDifficulty] = React.useState(() => parseInt(localStorage.getItem('maxDifficulty') || '5', 10));
+    const [easyMode, setEasyMode] = React.useState(() => localStorage.getItem('easyMode') === 'true');
+    const [lastCustomDifficulty, setLastCustomDifficulty] = React.useState({ 
         min: parseInt(localStorage.getItem('lastCustomMin') || '4', 10), 
         max: parseInt(localStorage.getItem('lastCustomMax') || '8', 10) 
     });
 
     // handles theme changes and saves to local storage
-    useEffect(() => {
+    React.useEffect(() => {
         document.body.className = theme;
         localStorage.setItem('theme', theme);
     }, [theme]);
 
     // checks user session on load and listens for auth changes
-    useEffect(() => {
+    React.useEffect(() => {
         const setAuthAndLoadGame = async (currentSession) => {
             const today = new Date().toISOString().slice(0, 10);
             const dailySeed = parseInt(today.replace(/-/g, ''));
@@ -120,7 +120,7 @@ const App = () => {
     }, []);
 
     // handles the daily timer and saves progress
-    useEffect(() => {
+    React.useEffect(() => {
         let interval;
         const today = new Date().toISOString().slice(0, 10);
         const userId = session?.user.id;
@@ -199,12 +199,12 @@ const App = () => {
     };
 
     // starts a new practice game
-    const handleNewPracticeGame = useCallback(() => {
+    const handleNewPracticeGame = React.useCallback(() => {
         setPracticeGameTrigger(t => t + 1);
     }, []);
     
     // memoizes the difficulty range to prevent unnecessary game resets
-    const practiceDifficultyRange = useMemo(() => ({
+    const practiceDifficultyRange = React.useMemo(() => ({
         min: minPracticeDifficulty,
         max: maxPracticeDifficulty
     }), [minPracticeDifficulty, maxPracticeDifficulty]);

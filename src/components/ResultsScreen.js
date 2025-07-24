@@ -1,7 +1,7 @@
 import React from 'react';
 
 // the popup that shows game results
-const ResultsScreen = ({ isWin, time, onPlayAgain, isPractice, onClose, handleShare }) => {
+const ResultsScreen = ({ isWin, time, guessHistory, onPlayAgain, isPractice, onClose, handleShare }) => {
     // formats seconds into a 'minutes seconds' string
     const formatTime = (totalSeconds) => {
         const minutes = Math.floor(totalSeconds / 60);
@@ -19,6 +19,7 @@ const ResultsScreen = ({ isWin, time, onPlayAgain, isPractice, onClose, handleSh
                 <button className="close-button" onClick={onClose}>×</button>
                 <h2 className="results-title">{isWin ? "You solved it!" : "Out of Guesses!"}</h2>
                 <div className="results-time">Your time: {formatTime(time)}</div>
+                <div className="results-guesses">Your guesses: {guessHistory.join(', ')}</div>
                 <div className="results-actions">
                     {!isPractice && (
                         <button className="button share-button" onClick={handleShare}>Share</button>
