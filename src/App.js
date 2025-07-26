@@ -52,61 +52,42 @@ const App = () => {
             
             let dailyPuzzle;
 
-            const { data: dbPuzzle, error: dbPuzzleError } = await supabase
+            const { data: dbPuzzle } = await supabase
                 .from('puzzles')
                 .select('*')
                 .eq('puzzle_id', dailySeed)
                 .single();
-
-            if (dbPuzzleError && dbPuzzleError.code !== 'PGRST116') {
-                console.error("Error fetching daily puzzle from DB:", dbPuzzleError);
-            }
 
             if (dbPuzzle) {
                 dailyPuzzle = {
                     puzzle_id: dbPuzzle.puzzle_id,
                     clues: dbPuzzle.clues,
                     solution: dbPuzzle.solution,
-                    values: dbPuzzle.values, // <-- THE FIX IS HERE
+                    values: dbPuzzle.values,
                 };
             } else {
-                console.warn(`Puzzle with ID ${dailySeed} not found in database. Using client-side generation as a fallback.`);
                 dailyPuzzle = generatePuzzle(dailySeed);
             }
             
             let completedPlay = null;
 
             if (currentSession?.user) {
-                const { data, error } = await supabase
+                const { data } = await supabase
                     .from('plays')
                     .select('*')
                     .eq('user_id', currentSession.user.id)
                     .eq('puzzle_id', dailySeed)
                     .limit(1)
                     .maybeSingle();
-                
-                if (error) {
-                    console.error("Error fetching play record:", error);
-                } else {
-                    completedPlay = data;
-                }
-
+                completedPlay = data;
             } else {
                 const guestPlay = localStorage.getItem(`glyph-play-${utcDateStr}`);
-                if (guestPlay) {
-                    completedPlay = JSON.parse(guestPlay);
-                }
+                if (guestPlay) completedPlay = JSON.parse(guestPlay);
             }
             
             if (completedPlay) {
                 const history = completedPlay.guess_history || [];
-                
-                let finalGuessesLeft = 0;
-                if (completedPlay.is_win) {
-                    const wrongGuesses = history.length - 1;
-                    finalGuessesLeft = 3 - wrongGuesses;
-                }
-
+                let finalGuessesLeft = completedPlay.is_win ? (3 - (history.length - 1)) : 0;
                 setGameState({
                     puzzle: dailyPuzzle,
                     isComplete: true,
@@ -117,15 +98,30 @@ const App = () => {
                     isTimerRunning: false,
                 });
             } else {
-                setGameState({
-                    puzzle: dailyPuzzle,
-                    elapsedTime: 0,
-                    isComplete: false,
-                    isWin: false,
-                    guessesLeft: 3,
-                    guessHistory: [],
-                    isTimerRunning: true,
-                });
+                // Check for in-progress game before starting a new one
+                const inProgressData = localStorage.getItem(`glyph-inprogress-${utcDateStr}`);
+                if (inProgressData) {
+                    const { elapsedTime, guessHistory } = JSON.parse(inProgressData);
+                    setGameState({
+                        puzzle: dailyPuzzle,
+                        elapsedTime: elapsedTime || 0,
+                        isComplete: false,
+                        isWin: false,
+                        guessesLeft: 3 - (guessHistory?.length || 0),
+                        guessHistory: guessHistory || [],
+                        isTimerRunning: true,
+                    });
+                } else {
+                    setGameState({
+                        puzzle: dailyPuzzle,
+                        elapsedTime: 0,
+                        isComplete: false,
+                        isWin: false,
+                        guessesLeft: 3,
+                        guessHistory: [],
+                        isTimerRunning: true,
+                    });
+                }
             }
             setLoading(false);
         };
@@ -138,6 +134,23 @@ const App = () => {
         return () => subscription.unsubscribe();
     }, []);
 
+    // This new effect saves the game state as it changes
+    useEffect(() => {
+        if (mode === 'daily' && gameState.isTimerRunning && !gameState.isComplete && gameState.puzzle) {
+            const now = new Date();
+            const year = now.getUTCFullYear();
+            const month = (now.getUTCMonth() + 1).toString().padStart(2, '0');
+            const day = now.getUTCDate().toString().padStart(2, '0');
+            const utcDateStr = `${year}-${month}-${day}`;
+            
+            const inProgressState = {
+                elapsedTime: gameState.elapsedTime,
+                guessHistory: gameState.guessHistory,
+            };
+            localStorage.setItem(`glyph-inprogress-${utcDateStr}`, JSON.stringify(inProgressState));
+        }
+    }, [gameState, mode]);
+
     useEffect(() => {
         let interval;
         if (gameState.isTimerRunning && !gameState.isComplete) {
@@ -148,6 +161,7 @@ const App = () => {
         return () => clearInterval(interval);
     }, [gameState.isTimerRunning, gameState.isComplete]);
     
+    // ... all other handler functions (handleSignOut, etc.) remain the same
     const handleSignOut = async () => {
         await supabase.auth.signOut();
         setIsSettingsOpen(false);
@@ -209,7 +223,7 @@ const App = () => {
         min: minPracticeDifficulty,
         max: maxPracticeDifficulty
     }), [minPracticeDifficulty, maxPracticeDifficulty]);
-
+    
     const renderContent = () => {
         if (loading) {
             return <div>Loading...</div>;

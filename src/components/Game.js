@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabaseClient';
 import { generatePuzzle } from '../lib/puzzleGenerator';
 import ResultsScreen from './ResultsScreen';
 
-// A component for a clickable black box that hides the answer
 const Spoiler = ({ value }) => {
     const [isRevealed, setIsRevealed] = useState(false);
 
@@ -17,11 +16,7 @@ const Spoiler = ({ value }) => {
     );
 };
 
-// The main game component
 const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode, dailyState, setDailyState }) => {
-    // --- State Management ---
-    // The component now has a single internal state object.
-    // It will be initialized based on the mode (daily or practice).
     const [gameState, setGameState] = useState({
         puzzle: null,
         elapsedTime: 0,
@@ -36,15 +31,10 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
     const [showSolution, setShowSolution] = useState(false);
     const [showResultsPopup, setShowResultsPopup] = useState(false);
 
-    // Destructure from the single internal state for cleaner access
     const { puzzle, elapsedTime, isComplete, isWin, guessesLeft, guessHistory, isTimerRunning } = gameState;
 
-    // --- Core Game Logic ---
-
-    // This is the main effect that initializes or updates the game state.
     useEffect(() => {
         if (isPractice) {
-            // PRACTICE MODE: Generate a new puzzle and set it as the internal state.
             const puzzleSeed = Date.now();
             const currentPuzzle = generatePuzzle(puzzleSeed, practiceDifficultyRange, easyMode);
             setGameState({
@@ -60,16 +50,13 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
             setShowSolution(false);
             setShowResultsPopup(false);
         } else {
-            // DAILY MODE: Use the state passed down from App.js.
-            // This state is already figured out (new game or completed game).
             setGameState(dailyState);
             if (dailyState.isComplete) {
                 setShowResultsPopup(true);
             }
         }
-    }, [isPractice, onPlayAgain, dailyState, practiceDifficultyRange, easyMode]); // Reruns when mode changes or new practice game is triggered
+    }, [isPractice, onPlayAgain, dailyState, practiceDifficultyRange, easyMode]);
 
-    // Timer effect
     useEffect(() => {
         let interval;
         if (isTimerRunning && !isComplete) {
@@ -80,7 +67,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         return () => clearInterval(interval);
     }, [isTimerRunning, isComplete]);
 
-    // Handles the end of a game
     const endGame = useCallback((winState, finalHistory) => {
         const finalState = { ...gameState, isTimerRunning: false, isComplete: true, isWin: winState, guessHistory: finalHistory };
         setGameState(finalState);
@@ -91,7 +77,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                 supabase.rpc('increment_practice_wins', { p_user_id: user.id }).then();
             }
         } else {
-            // In daily mode, we also need to update the parent App component's state
             setDailyState(finalState);
             const playData = {
                 puzzle_id: puzzle.puzzle_id,
@@ -99,21 +84,24 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                 duration_ms: elapsedTime * 1000,
                 guess_history: finalHistory,
             };
+
+            const now = new Date();
+            const year = now.getUTCFullYear();
+            const month = (now.getUTCMonth() + 1).toString().padStart(2, '0');
+            const day = now.getUTCDate().toString().padStart(2, '0');
+            const utcDateStr = `${year}-${month}-${day}`;
+
             if (user) {
                 supabase.from('plays').insert({ ...playData, user_id: user.id }).then();
                 supabase.rpc('update_user_stats', { p_user_id: user.id, p_is_win: winState }).then();
             } else {
-                const now = new Date();
-                const year = now.getUTCFullYear();
-                const month = (now.getUTCMonth() + 1).toString().padStart(2, '0');
-                const day = now.getUTCDate().toString().padStart(2, '0');
-                const utcDateStr = `${year}-${month}-${day}`;
                 localStorage.setItem(`glyph-play-${utcDateStr}`, JSON.stringify(playData));
             }
+            // Clean up the in-progress state once the game is finished
+            localStorage.removeItem(`glyph-inprogress-${utcDateStr}`);
         }
     }, [gameState, setDailyState, user, isPractice, puzzle, elapsedTime]);
 
-    // Handles guess submission
     const handleSubmit = useCallback(() => {
         if (isComplete || !inputValue || guessesLeft === 0 || !puzzle) return;
 
@@ -134,7 +122,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         }
     }, [isComplete, inputValue, guessesLeft, puzzle, guessHistory, endGame]);
 
-    // --- Keyboard Input ---
     useEffect(() => {
         const handleKeyDown = (event) => {
             if (showResultsPopup) return;
@@ -150,7 +137,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isComplete, showResultsPopup, handleSubmit]);
 
-    // --- Share Text Generation ---
     const shareText = useMemo(() => {
         if (!puzzle || isPractice) return '';
 
@@ -178,7 +164,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         }).catch(err => console.error('Failed to copy', err));
     }, [shareText]);
     
-    // --- Render Logic ---
     const renderClues = () => {
         if (!puzzle || !puzzle.clues || puzzle.clues.length === 0) return null;
         return puzzle.clues.map((clue, index) => {
@@ -190,13 +175,10 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         });
     };
 
-    // This is the main safeguard against a blank screen.
-    // It will not attempt to render the game until the puzzle object is ready.
     if (!puzzle) {
         return <div className="game-container">Loading...</div>;
     }
     
-    // This calculation is now safe because we know 'puzzle' and 'puzzle.clues' exist.
     const questionGlyph = puzzle.clues && puzzle.clues.length > 0 ? puzzle.clues[puzzle.clues.length - 1].split(' ')[0] : null;
 
     return (
