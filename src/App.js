@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from './lib/supabaseClient';
 import { generatePuzzle } from './lib/puzzleGenerator';
+import { Analytics } from "@vercel/analytics/react"
+
 import WelcomeScreen from './components/WelcomeScreen';
 import SettingsModal from './components/SettingsModal';
 import Game from './components/Game';
@@ -257,6 +259,7 @@ const App = () => {
 
     return (
         <div className="app-container">
+            <Analytics/>
             <header className="app-header">
                 <h1 className="app-title">Play-Glyph</h1>
                 <div className="controls-container">
