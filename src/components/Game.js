@@ -97,7 +97,6 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
             } else {
                 localStorage.setItem(`glyph-play-${utcDateStr}`, JSON.stringify(playData));
             }
-            // Clean up the in-progress state once the game is finished
             localStorage.removeItem(`glyph-inprogress-${utcDateStr}`);
         }
     }, [gameState, setDailyState, user, isPractice, puzzle, elapsedTime]);

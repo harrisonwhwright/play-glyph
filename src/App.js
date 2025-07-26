@@ -98,7 +98,6 @@ const App = () => {
                     isTimerRunning: false,
                 });
             } else {
-                // Check for in-progress game before starting a new one
                 const inProgressData = localStorage.getItem(`glyph-inprogress-${utcDateStr}`);
                 if (inProgressData) {
                     const { elapsedTime, guessHistory } = JSON.parse(inProgressData);
@@ -134,7 +133,6 @@ const App = () => {
         return () => subscription.unsubscribe();
     }, []);
 
-    // This new effect saves the game state as it changes
     useEffect(() => {
         if (mode === 'daily' && gameState.isTimerRunning && !gameState.isComplete && gameState.puzzle) {
             const now = new Date();
@@ -161,7 +159,6 @@ const App = () => {
         return () => clearInterval(interval);
     }, [gameState.isTimerRunning, gameState.isComplete]);
     
-    // ... all other handler functions (handleSignOut, etc.) remain the same
     const handleSignOut = async () => {
         await supabase.auth.signOut();
         setIsSettingsOpen(false);
