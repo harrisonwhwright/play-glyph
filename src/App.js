@@ -17,7 +17,7 @@ const App = () => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [guestHasStarted, setGuestHasStarted] = useState(false);
     const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
-    
+
     const [gameState, setGameState] = useState({
         puzzle: null,
         elapsedTime: 0,
@@ -27,31 +27,31 @@ const App = () => {
         guessHistory: [],
         isTimerRunning: false,
     });
-    
+
     const [minPracticeDifficulty, setMinPracticeDifficulty] = useState(() => parseInt(localStorage.getItem('minDifficulty') || '3', 10));
     const [maxPracticeDifficulty, setMaxPracticeDifficulty] = useState(() => parseInt(localStorage.getItem('maxDifficulty') || '5', 10));
     const [easyMode, setEasyMode] = useState(() => localStorage.getItem('easyMode') === 'true');
-    const [lastCustomDifficulty, setLastCustomDifficulty] = useState({ 
-        min: parseInt(localStorage.getItem('lastCustomMin') || '4', 10), 
-        max: parseInt(localStorage.getItem('lastCustomMax') || '8', 10) 
+    const [lastCustomDifficulty, setLastCustomDifficulty] = useState({
+        min: parseInt(localStorage.getItem('lastCustomMin') || '4', 10),
+        max: parseInt(localStorage.getItem('lastCustomMax') || '8', 10)
     });
 
     useEffect(() => {
         document.body.className = theme;
         localStorage.setItem('theme', theme);
     }, [theme]);
-    
+
     useEffect(() => {
         const initializeDailyState = async (currentSession) => {
             setLoading(true);
-            
+
             const now = new Date();
             const year = now.getUTCFullYear();
             const month = (now.getUTCMonth() + 1).toString().padStart(2, '0');
             const day = now.getUTCDate().toString().padStart(2, '0');
             const utcDateStr = `${year}-${month}-${day}`;
             const dailySeed = parseInt(`${year}${month}${day}`, 10);
-            
+
             let dailyPuzzle;
 
             const { data: dbPuzzle } = await supabase
@@ -70,23 +70,27 @@ const App = () => {
             } else {
                 dailyPuzzle = generatePuzzle(dailySeed);
             }
-            
+
             let completedPlay = null;
 
-            if (currentSession?.user) {
-                const { data } = await supabase
+            const localPlayData = localStorage.getItem(`glyph-play-${utcDateStr}`);
+            if (localPlayData) {
+                completedPlay = JSON.parse(localPlayData);
+            } else if (currentSession?.user) {
+                const { data: dbPlay } = await supabase
                     .from('plays')
                     .select('*')
                     .eq('user_id', currentSession.user.id)
                     .eq('puzzle_id', dailySeed)
                     .limit(1)
                     .maybeSingle();
-                completedPlay = data;
-            } else {
-                const guestPlay = localStorage.getItem(`glyph-play-${utcDateStr}`);
-                if (guestPlay) completedPlay = JSON.parse(guestPlay);
+                
+                if (dbPlay) {
+                    completedPlay = dbPlay;
+                    localStorage.setItem(`glyph-play-${utcDateStr}`, JSON.stringify(dbPlay));
+                }
             }
-            
+
             if (completedPlay) {
                 const history = completedPlay.guess_history || [];
                 let finalGuessesLeft = completedPlay.is_win ? (3 - (history.length - 1)) : 0;
@@ -142,7 +146,7 @@ const App = () => {
             const month = (now.getUTCMonth() + 1).toString().padStart(2, '0');
             const day = now.getUTCDate().toString().padStart(2, '0');
             const utcDateStr = `${year}-${month}-${day}`;
-            
+
             const inProgressState = {
                 elapsedTime: gameState.elapsedTime,
                 guessHistory: gameState.guessHistory,
@@ -150,7 +154,7 @@ const App = () => {
             localStorage.setItem(`glyph-inprogress-${utcDateStr}`, JSON.stringify(inProgressState));
         }
     }, [gameState, mode]);
-    
+
     const handleSignOut = async () => {
         await supabase.auth.signOut();
         setIsSettingsOpen(false);
@@ -164,7 +168,7 @@ const App = () => {
     const handleThemeChange = () => {
         setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
     };
-    
+
     const handleMinDifficultyChange = (e) => {
         const newMin = parseInt(e.target.value, 10);
         setLastCustomDifficulty(prev => ({ ...prev, min: newMin }));
@@ -186,7 +190,7 @@ const App = () => {
             localStorage.setItem('minDifficulty', newMax);
         }
     };
-    
+
     const handleEasyModeChange = () => {
         const newEasyMode = !easyMode;
         setEasyMode(newEasyMode);
@@ -207,12 +211,12 @@ const App = () => {
     const handleNewPracticeGame = useCallback(() => {
         setPracticeGameTrigger(t => t + 1);
     }, []);
-    
+
     const practiceDifficultyRange = useMemo(() => ({
         min: minPracticeDifficulty,
         max: maxPracticeDifficulty
     }), [minPracticeDifficulty, maxPracticeDifficulty]);
-    
+
     const renderContent = () => {
         if (loading) {
             return <div>Loading...</div>;
@@ -223,22 +227,22 @@ const App = () => {
                 return <WelcomeScreen onGuestLogin={() => setGuestHasStarted(true)} />;
             }
             return (
-                <Game 
+                <Game
                     key='daily'
-                    user={session?.user} 
-                    isPractice={false} 
+                    user={session?.user}
+                    isPractice={false}
                     dailyState={gameState}
                     setDailyState={setGameState}
                 />
             );
         }
-        
+
         if (mode === 'practice') {
             return (
-                <Game 
+                <Game
                     key={practiceGameTrigger}
-                    user={session?.user} 
-                    isPractice={true} 
+                    user={session?.user}
+                    isPractice={true}
                     onPlayAgain={handleNewPracticeGame}
                     practiceDifficultyRange={practiceDifficultyRange}
                     easyMode={easyMode}
@@ -249,7 +253,7 @@ const App = () => {
 
     return (
         <div className="app-container">
-            <Analytics/>
+            <Analytics />
             <header className="app-header">
                 <h1 className="app-title">Play-Glyph</h1>
                 <div className="controls-container">
@@ -271,9 +275,9 @@ const App = () => {
             <main>
                 {renderContent()}
             </main>
-            <SettingsModal 
-                isOpen={isSettingsOpen} 
-                onClose={() => setIsSettingsOpen(false)} 
+            <SettingsModal
+                isOpen={isSettingsOpen}
+                onClose={() => setIsSettingsOpen(false)}
                 onSignOut={handleSignOut}
                 onSignIn={handleSignIn}
                 userState={session ? 'authenticated' : (guestHasStarted || gameState.isComplete ? 'guest' : 'guest_prompt')}

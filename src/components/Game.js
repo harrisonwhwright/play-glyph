@@ -95,6 +95,9 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
             const day = now.getUTCDate().toString().padStart(2, '0');
             const utcDateStr = `${year}-${month}-${day}`;
 
+            localStorage.setItem(`glyph-play-${utcDateStr}`, JSON.stringify(playData));
+            localStorage.removeItem(`glyph-inprogress-${utcDateStr}`);
+            
             if (user) {
                 try {
                     await supabase.from('plays').insert({ ...playData, user_id: user.id });
@@ -102,10 +105,7 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                 } catch (error) {
                     console.error("Error saving daily play data:", error);
                 }
-            } else {
-                localStorage.setItem(`glyph-play-${utcDateStr}`, JSON.stringify(playData));
             }
-            localStorage.removeItem(`glyph-inprogress-${utcDateStr}`);
         }
     }, [gameState, setDailyState, user, isPractice, puzzle, elapsedTime]);
 
@@ -122,12 +122,12 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         } else {
             const newGuessesLeft = guessesLeft - 1;
             const updater = s => ({ ...s, guessHistory: newHistory, guessesLeft: newGuessesLeft });
-            
+
             setGameState(updater);
             if (!isPractice) {
                 setDailyState(updater);
             }
-            
+
             setInputValue('');
             if (newGuessesLeft === 0) {
                 endGame(false, newHistory);
@@ -164,10 +164,10 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         const month = seedStr.substring(4, 6);
         const day = seedStr.substring(6, 8);
         const formattedDate = `${year}.${month}.${day}`;
-        
+
         const score = isWin ? `${guessHistory.length}/3` : 'X/3';
         const resultSquares = guessHistory.map(g => g === puzzle.solution ? '🟩' : '⬛').join('');
-        
+
         return `#playglyph (${formattedDate}) ${timeString} ${score} ${resultSquares} https://play-glyph.com`;
     }, [puzzle, isWin, guessHistory, elapsedTime, isPractice]);
 
@@ -176,7 +176,7 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
             alert("Results copied to clipboard!");
         }).catch(err => console.error('Failed to copy', err));
     }, [shareText]);
-    
+
     const renderClues = () => {
         if (!puzzle || !puzzle.clues || puzzle.clues.length === 0) return null;
         return puzzle.clues.map((clue, index) => {
@@ -191,7 +191,7 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
     if (!puzzle) {
         return <div className="game-container">Loading...</div>;
     }
-    
+
     const questionGlyph = puzzle.clues && puzzle.clues.length > 0 ? puzzle.clues[puzzle.clues.length - 1].split(' ')[0] : null;
 
     return (
@@ -208,7 +208,7 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                 <div className="clues-area">
                     {renderClues()}
                 </div>
-                
+
                 <div className="input-bar-container">
                     <input className="input-bar" value={inputValue} readOnly />
                 </div>
@@ -218,7 +218,7 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                     <button className="keypad-button" disabled={isComplete} onClick={() => setInputValue(v => v.slice(0, -1))}>⌫</button>
                     <button className="submit-button" disabled={isComplete} onClick={handleSubmit}>➤</button>
                 </div>
-                
+
                 {isPractice && isComplete && !showSolution && (
                     <div className="reveal-solution-area">
                         <button className="button reveal-button" onClick={() => setShowSolution(true)}>
@@ -226,30 +226,30 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                         </button>
                     </div>
                 )}
-                
+
                 {showSolution && puzzle && puzzle.values && (
-                        <div className="solution-key-container-horizontal">
-                                <h3 className="solution-key-title">Solution Key</h3>
-                                <div className="solution-key-grid">
-                                    {Object.entries(puzzle.values)
-                                        .filter(([glyph]) => glyph !== questionGlyph)
-                                        .map(([glyph, value]) => (
-                                        <div key={glyph} className="solution-key-item">
-                                                <span className="solution-glyph">{glyph}</span> = <Spoiler value={value} />
-                                        </div>
-                                    ))}
-                                </div>
+                    <div className="solution-key-container-horizontal">
+                        <h3 className="solution-key-title">Solution Key</h3>
+                        <div className="solution-key-grid">
+                            {Object.entries(puzzle.values)
+                                .filter(([glyph]) => glyph !== questionGlyph)
+                                .map(([glyph, value]) => (
+                                    <div key={glyph} className="solution-key-item">
+                                        <span className="solution-glyph">{glyph}</span> = <Spoiler value={value} />
+                                    </div>
+                                ))}
                         </div>
+                    </div>
                 )}
-                
+
             </div>
             {showResultsPopup && (
-                <ResultsScreen 
-                    isWin={isWin} 
+                <ResultsScreen
+                    isWin={isWin}
                     time={elapsedTime}
-                    guessHistory={guessHistory} 
-                    onPlayAgain={onPlayAgain} 
-                    isPractice={isPractice} 
+                    guessHistory={guessHistory}
+                    onPlayAgain={onPlayAgain}
+                    isPractice={isPractice}
                     onClose={() => setShowResultsPopup(false)}
                     handleShare={handleShare}
                 />
