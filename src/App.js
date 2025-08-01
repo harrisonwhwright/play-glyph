@@ -150,16 +150,6 @@ const App = () => {
             localStorage.setItem(`glyph-inprogress-${utcDateStr}`, JSON.stringify(inProgressState));
         }
     }, [gameState, mode]);
-
-    useEffect(() => {
-        let interval;
-        if (gameState.isTimerRunning && !gameState.isComplete) {
-            interval = setInterval(() => {
-                setGameState(s => ({ ...s, elapsedTime: s.elapsedTime + 1 }));
-            }, 1000);
-        }
-        return () => clearInterval(interval);
-    }, [gameState.isTimerRunning, gameState.isComplete]);
     
     const handleSignOut = async () => {
         await supabase.auth.signOut();

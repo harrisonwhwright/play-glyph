@@ -61,13 +61,17 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
         let interval;
         if (isTimerRunning && !isComplete) {
             interval = setInterval(() => {
-                setGameState(s => ({ ...s, elapsedTime: s.elapsedTime + 1 }));
+                const updater = s => ({ ...s, elapsedTime: s.elapsedTime + 1 });
+                setGameState(updater);
+                if (!isPractice) {
+                    setDailyState(updater);
+                }
             }, 1000);
         }
         return () => clearInterval(interval);
-    }, [isTimerRunning, isComplete]);
+    }, [isTimerRunning, isComplete, isPractice, setDailyState]);
 
-    const endGame = useCallback((winState, finalHistory) => {
+    const endGame = useCallback(async (winState, finalHistory) => {
         const finalState = { ...gameState, isTimerRunning: false, isComplete: true, isWin: winState, guessHistory: finalHistory };
         setGameState(finalState);
         setShowResultsPopup(true);
@@ -92,8 +96,12 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
             const utcDateStr = `${year}-${month}-${day}`;
 
             if (user) {
-                supabase.from('plays').insert({ ...playData, user_id: user.id }).then();
-                supabase.rpc('update_user_stats', { p_user_id: user.id, p_is_win: winState }).then();
+                try {
+                    await supabase.from('plays').insert({ ...playData, user_id: user.id });
+                    await supabase.rpc('update_user_stats', { p_user_id: user.id, p_is_win: winState });
+                } catch (error) {
+                    console.error("Error saving daily play data:", error);
+                }
             } else {
                 localStorage.setItem(`glyph-play-${utcDateStr}`, JSON.stringify(playData));
             }
@@ -113,13 +121,19 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
             endGame(true, newHistory);
         } else {
             const newGuessesLeft = guessesLeft - 1;
-            setGameState(s => ({ ...s, guessHistory: newHistory, guessesLeft: newGuessesLeft }));
+            const updater = s => ({ ...s, guessHistory: newHistory, guessesLeft: newGuessesLeft });
+            
+            setGameState(updater);
+            if (!isPractice) {
+                setDailyState(updater);
+            }
+            
             setInputValue('');
             if (newGuessesLeft === 0) {
                 endGame(false, newHistory);
             }
         }
-    }, [isComplete, inputValue, guessesLeft, puzzle, guessHistory, endGame]);
+    }, [isComplete, inputValue, guessesLeft, puzzle, guessHistory, endGame, isPractice, setDailyState]);
 
     useEffect(() => {
         const handleKeyDown = (event) => {
@@ -214,18 +228,18 @@ const Game = ({ user, isPractice, onPlayAgain, practiceDifficultyRange, easyMode
                 )}
                 
                 {showSolution && puzzle && puzzle.values && (
-                     <div className="solution-key-container-horizontal">
-                          <h3 className="solution-key-title">Solution Key</h3>
-                          <div className="solution-key-grid">
-                              {Object.entries(puzzle.values)
-                                  .filter(([glyph]) => glyph !== questionGlyph)
-                                  .map(([glyph, value]) => (
-                                  <div key={glyph} className="solution-key-item">
-                                      <span className="solution-glyph">{glyph}</span> = <Spoiler value={value} />
-                                  </div>
-                              ))}
-                          </div>
-                     </div>
+                        <div className="solution-key-container-horizontal">
+                                <h3 className="solution-key-title">Solution Key</h3>
+                                <div className="solution-key-grid">
+                                    {Object.entries(puzzle.values)
+                                        .filter(([glyph]) => glyph !== questionGlyph)
+                                        .map(([glyph, value]) => (
+                                        <div key={glyph} className="solution-key-item">
+                                                <span className="solution-glyph">{glyph}</span> = <Spoiler value={value} />
+                                        </div>
+                                    ))}
+                                </div>
+                        </div>
                 )}
                 
             </div>
