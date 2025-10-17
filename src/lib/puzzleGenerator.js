@@ -1,4 +1,3 @@
-// makes the daily puzzle the same for everyone
 function seededRandom(seed) {
     let s = seed;
     return function() {
@@ -7,7 +6,6 @@ function seededRandom(seed) {
     };
 }
 
-// picks a puzzle size weighted towards the middle of a range
 function getWeightedRandomSize(min, max, random) {
     const range = [];
     for (let i = min; i <= max; i++) {
@@ -19,7 +17,6 @@ function getWeightedRandomSize(min, max, random) {
     return range[Math.floor(random() * range.length)];
 }
 
-// this is the big one it makes all the puzzles
 export function generatePuzzle(seed, difficultyRange = null, easyMode = false) {
     const random = seededRandom(seed);
     const glyphs = ['■', '●', '▲', '◆', '★', '⬟', '✦', '✧', '◈'].sort(() => random() - 0.5);
