@@ -26,7 +26,7 @@ export function generatePuzzle(seed, difficultyRange = null, easyMode = false) {
     if (difficultyRange) {
         size = getWeightedRandomSize(difficultyRange.min, difficultyRange.max, random);
     } else {
-        size = 4 + Math.floor(random() * 2);
+        size = 4 + Math.floor(random() * 3);
     }
 
     const selectedGlyphs = glyphs.slice(0, size);
